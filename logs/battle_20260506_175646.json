@@ -1,0 +1,406 @@
+{
+  "timestamp": "2026-05-06T10:56:08.382792+00:00",
+  "model": "deepseek",
+  "ticks": [
+    {
+      "tick": 1,
+      "status": "active",
+      "winner": null,
+      "cities": [
+        {
+          "name": "洛阳",
+          "owner": "魏",
+          "troops": 1000
+        },
+        {
+          "name": "成都",
+          "owner": "蜀",
+          "troops": 1000
+        },
+        {
+          "name": "建业",
+          "owner": "吴",
+          "troops": 1000
+        }
+      ],
+      "events": [],
+      "agent_actions": [
+        {
+          "agent": "刘备",
+          "faction": "蜀",
+          "thought": "无主之城虽好，但孤军出击恐被偷袭，先守住成都稳固根基为上。",
+          "type": "defend",
+          "target": "成都"
+        },
+        {
+          "agent": "曹操",
+          "faction": "魏",
+          "thought": "先取建业无主之地，壮大兵力，再图蜀吴。",
+          "type": "attack",
+          "target": "建业"
+        },
+        {
+          "agent": "孙权",
+          "faction": "吴",
+          "thought": "魏蜀兵力相当，我若进攻任一都会消耗实力，不如先防守建业，静观其变。",
+          "type": "defend",
+          "target": "建业"
+        }
+      ]
+    },
+    {
+      "tick": 2,
+      "status": "active",
+      "winner": null,
+      "cities": [
+        {
+          "name": "洛阳",
+          "owner": "魏",
+          "troops": 1000
+        },
+        {
+          "name": "成都",
+          "owner": "蜀",
+          "troops": 100
+        },
+        {
+          "name": "建业",
+          "owner": "吴",
+          "troops": 1000
+        }
+      ],
+      "events": [
+        {
+          "city": "成都",
+          "attacker": "魏",
+          "defender": "蜀",
+          "attack_power": 1200,
+          "defense_power": 1300.0,
+          "result": "defended",
+          "new_owner": "蜀",
+          "troops_remaining": 100,
+          "actions": [
+            {
+              "faction": "魏",
+              "type": "attack",
+              "agent_name": "曹操"
+            },
+            {
+              "faction": "蜀",
+              "type": "defend",
+              "agent_name": "刘备"
+            }
+          ]
+        }
+      ],
+      "agent_actions": [
+        {
+          "agent": "刘备",
+          "faction": "蜀",
+          "thought": "曹操势大，孙权亦不可轻视。我当先守成都，以逸待劳，观魏吴相争。",
+          "type": "defend",
+          "target": "成都"
+        },
+        {
+          "agent": "曹操",
+          "faction": "魏",
+          "thought": "刘备坐拥成都，兵多将广，但吾有洛阳精兵，先攻成都，可断其根基，再图江东。",
+          "type": "attack",
+          "target": "成都"
+        },
+        {
+          "agent": "孙权",
+          "faction": "吴",
+          "thought": "魏蜀兵力相当，先防守巩固基业，让他们互相消耗。",
+          "type": "defend",
+          "target": "建业"
+        }
+      ]
+    },
+    {
+      "tick": 3,
+      "status": "active",
+      "winner": null,
+      "cities": [
+        {
+          "name": "洛阳",
+          "owner": "魏",
+          "troops": 1000
+        },
+        {
+          "name": "成都",
+          "owner": "吴",
+          "troops": 800
+        },
+        {
+          "name": "建业",
+          "owner": "吴",
+          "troops": 1000
+        }
+      ],
+      "events": [
+        {
+          "city": "成都",
+          "attacker": "吴",
+          "defender": "蜀",
+          "attack_power": 1200,
+          "defense_power": 400.0,
+          "result": "captured",
+          "new_owner": "吴",
+          "troops_remaining": 800,
+          "actions": [
+            {
+              "faction": "吴",
+              "type": "attack",
+              "agent_name": "孙权"
+            },
+            {
+              "faction": "蜀",
+              "type": "defend",
+              "agent_name": "刘备"
+            },
+            {
+              "faction": "魏",
+              "type": "attack",
+              "agent_name": "曹操"
+            }
+          ]
+        }
+      ],
+      "agent_actions": [
+        {
+          "agent": "刘备",
+          "faction": "蜀",
+          "thought": "魏国兵力雄厚，我若进攻洛阳无异于以卵击石；吴国亦强，不宜树敌。先守住成都，稳固根基，再图后计。",
+          "type": "defend",
+          "target": "成都"
+        },
+        {
+          "agent": "曹操",
+          "faction": "魏",
+          "thought": "蜀国兵弱，先灭刘备再图江东，集中优势兵力进攻成都。",
+          "type": "attack",
+          "target": "成都"
+        },
+        {
+          "agent": "孙权",
+          "faction": "吴",
+          "thought": "蜀国兵力薄弱，正是夺取成都的好时机，先拿下成都再图洛阳。",
+          "type": "attack",
+          "target": "成都"
+        }
+      ]
+    },
+    {
+      "tick": 4,
+      "status": "active",
+      "winner": null,
+      "cities": [
+        {
+          "name": "洛阳",
+          "owner": "吴",
+          "troops": 1000
+        },
+        {
+          "name": "成都",
+          "owner": "魏",
+          "troops": 400
+        },
+        {
+          "name": "建业",
+          "owner": "吴",
+          "troops": 1000
+        }
+      ],
+      "events": [
+        {
+          "city": "洛阳",
+          "attacker": "吴",
+          "defender": "魏",
+          "attack_power": 2000,
+          "defense_power": 1000.0,
+          "result": "captured",
+          "new_owner": "吴",
+          "troops_remaining": 1000,
+          "actions": [
+            {
+              "faction": "吴",
+              "type": "attack",
+              "agent_name": "孙权"
+            },
+            {
+              "faction": "蜀",
+              "type": "attack",
+              "agent_name": "刘备"
+            }
+          ]
+        },
+        {
+          "city": "成都",
+          "attacker": "魏",
+          "defender": "吴",
+          "attack_power": 1200,
+          "defense_power": 800.0,
+          "result": "captured",
+          "new_owner": "魏",
+          "troops_remaining": 400,
+          "actions": [
+            {
+              "faction": "魏",
+              "type": "attack",
+              "agent_name": "曹操"
+            }
+          ]
+        }
+      ],
+      "agent_actions": [
+        {
+          "agent": "刘备",
+          "faction": "蜀",
+          "thought": "我失去成都，势单力薄，但吴国占据两城，魏国独守洛阳。可攻洛阳，若胜则得强兵，且吴魏相争，或有转机。",
+          "type": "attack",
+          "target": "洛阳"
+        },
+        {
+          "agent": "曹操",
+          "faction": "魏",
+          "thought": "吴国已占两城，兵力分散，我洛阳兵多，可先取成都削弱其势力，再图建业。",
+          "type": "attack",
+          "target": "成都"
+        },
+        {
+          "agent": "孙权",
+          "faction": "吴",
+          "thought": "上一回合攻下成都，蜀已灭，现在魏据洛阳。我两城兵力合计1800，进攻洛阳有先手优势，可趁魏未及反应一举拿下。",
+          "type": "attack",
+          "target": "洛阳"
+        }
+      ]
+    },
+    {
+      "tick": 5,
+      "status": "finished",
+      "winner": "吴",
+      "cities": [
+        {
+          "name": "洛阳",
+          "owner": "吴",
+          "troops": 1000
+        },
+        {
+          "name": "成都",
+          "owner": "吴",
+          "troops": 1500
+        },
+        {
+          "name": "建业",
+          "owner": "吴",
+          "troops": 1000
+        }
+      ],
+      "events": [
+        {
+          "city": "成都",
+          "attacker": "吴",
+          "defender": "魏",
+          "attack_power": 2200,
+          "defense_power": 700.0,
+          "result": "captured",
+          "new_owner": "吴",
+          "troops_remaining": 1500,
+          "actions": [
+            {
+              "faction": "吴",
+              "type": "attack",
+              "agent_name": "孙权"
+            },
+            {
+              "faction": "蜀",
+              "type": "attack",
+              "agent_name": "刘备"
+            },
+            {
+              "faction": "魏",
+              "type": "defend",
+              "agent_name": "曹操"
+            }
+          ]
+        }
+      ],
+      "agent_actions": [
+        {
+          "agent": "刘备",
+          "faction": "蜀",
+          "thought": "我目前无城，形势危急。吴国两城兵多，不宜硬碰；魏国成都兵少，可趁机夺取作为立足之地。",
+          "type": "attack",
+          "target": "成都"
+        },
+        {
+          "agent": "曹操",
+          "faction": "魏",
+          "thought": "吴军势大，我仅成都400兵，防守可借地利，待其内耗或分兵再出击。",
+          "type": "defend",
+          "target": "成都"
+        },
+        {
+          "agent": "孙权",
+          "faction": "吴",
+          "thought": "蜀已灭，魏据成都，我应趁其立足未稳夺回成都，巩固优势。",
+          "type": "attack",
+          "target": "成都"
+        }
+      ]
+    }
+  ],
+  "final_result": {
+    "tick": 5,
+    "status": "finished",
+    "winner": "吴",
+    "cities": [
+      {
+        "name": "洛阳",
+        "owner": "吴",
+        "troops": 1000
+      },
+      {
+        "name": "成都",
+        "owner": "吴",
+        "troops": 1500
+      },
+      {
+        "name": "建业",
+        "owner": "吴",
+        "troops": 1000
+      }
+    ],
+    "events": [
+      {
+        "city": "成都",
+        "attacker": "吴",
+        "defender": "魏",
+        "attack_power": 2200,
+        "defense_power": 700.0,
+        "result": "captured",
+        "new_owner": "吴",
+        "troops_remaining": 1500,
+        "actions": [
+          {
+            "faction": "吴",
+            "type": "attack",
+            "agent_name": "孙权"
+          },
+          {
+            "faction": "蜀",
+            "type": "attack",
+            "agent_name": "刘备"
+          },
+          {
+            "faction": "魏",
+            "type": "defend",
+            "agent_name": "曹操"
+          }
+        ]
+      }
+    ]
+  }
+}
