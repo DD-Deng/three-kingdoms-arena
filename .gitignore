@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
-arena.db
+*.db
 .pytest_cache/
+logs/
+.vscode/

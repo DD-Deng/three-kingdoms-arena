@@ -34,11 +34,19 @@ def test_create_join_action_tick():
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     assert r.status_code == 200
     state = r.json()
-    assert state["tick"] == 0
+    assert state["current_tick"] == 0
     assert state["status"] == "waiting"
-    assert len(state["cities"]) == 3
+    assert state["your_faction"] == "蜀"
+    assert len(state["your_cities"]) == 1
+    assert state["your_cities"][0]["name"] == "成都"
+    assert state["your_cities"][0]["troops"] == 1000
+    assert len(state["all_cities"]) == 3
+    # 有效动作: 可以攻击洛阳(魏)、建业(无主不算 enemy)，防御成都
+    action_types = {a["type"] for a in state["valid_actions"]}
+    assert "attack" in action_types
+    assert "defend" in action_types
     # 成都归蜀，洛阳归魏，建业无主
-    city_owners = {c["name"]: c["owner"] for c in state["cities"]}
+    city_owners = {c["name"]: c["owner"] for c in state["all_cities"]}
     assert city_owners["成都"] == "蜀"
     assert city_owners["洛阳"] == "魏"
     assert city_owners["建业"] is None
@@ -60,8 +68,10 @@ def test_create_join_action_tick():
     # 洛阳应该被蜀攻陷 (1000 vs 1000, 攻击方优势 +200)
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    luoyang = [c for c in state["cities"] if c["name"] == "洛阳"][0]
+    luoyang = [c for c in state["all_cities"] if c["name"] == "洛阳"][0]
     assert luoyang["owner"] == "蜀"
+    # 验证 last_tick_events 不为空
+    assert len(state["last_tick_events"]) > 0
 
 
 # ── 测试 2: 无效 token 被拒 ──────────────────────────────────

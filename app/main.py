@@ -57,9 +57,9 @@ def get_state(
     token: str,
     session: Session = Depends(get_session),
 ):
-    _auth(session, game_id, token)
+    agent = _auth(session, game_id, token)
     try:
-        return eng.get_state(session, game_id)
+        return eng.get_state(session, game_id, agent)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

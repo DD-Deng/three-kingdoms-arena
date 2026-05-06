@@ -12,6 +12,7 @@ class Game(SQLModel, table=True):
     tick: int = Field(default=0)
     status: str = Field(default="waiting")  # waiting | active | finished
     winner: Optional[str] = Field(default=None)
+    last_tick_events: Optional[str] = Field(default=None)  # JSON string
 
 
 class Agent(SQLModel, table=True):
