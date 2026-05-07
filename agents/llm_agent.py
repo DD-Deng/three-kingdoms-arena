@@ -350,7 +350,8 @@ class LLMAgent:
                 if all_legal:
                     # ── 客户端粮草校验 ──────────────────────────
                     grain = state.get("your_resources", {}).get("grain", 0)
-                    actions, skipped = self._clip_by_grain(actions, grain)
+                    recruit_penalty = state.get("your_resources", {}).get("recruit_penalty", False)
+                    actions, skipped = self._clip_by_grain(actions, grain, recruit_penalty)
                     if skipped:
                         self.console.print(
                             f"[yellow]⚠ 粮草不足，跳过 {skipped} 个超预算动作[/]"
@@ -447,9 +448,10 @@ class LLMAgent:
     # ── 粮草裁剪 ───────────────────────────────────────────────
 
     @staticmethod
-    def _clip_by_grain(actions: list[dict], grain: int) -> tuple[list[dict], int]:
+    def _clip_by_grain(actions: list[dict], grain: int, recruit_penalty: bool = False) -> tuple[list[dict], int]:
         """按粮草预算裁剪动作。优先保留 attack > recruit > defend > march > diplomacy。"""
-        cost_map = {"attack": 1, "recruit": 2, "defend": 0, "march": 0, "diplomacy": 0}
+        recruit_cost = 3 if recruit_penalty else 2
+        cost_map = {"attack": 1, "recruit": recruit_cost, "defend": 0, "march": 0, "diplomacy": 0}
         # 计算每个动作的粮草消耗
         priced = []
         for act in actions:
@@ -488,13 +490,13 @@ class LLMAgent:
                         spent += affordable_troops
                     else:
                         skipped += 1
-                elif atype == "recruit" and grain - spent >= 2:
-                    affordable_amount = (grain - spent) // 2
+                elif atype == "recruit" and grain - spent >= recruit_cost:
+                    affordable_amount = (grain - spent) // recruit_cost
                     if affordable_amount > 0:
                         act = dict(act)
                         act["amount"] = affordable_amount
                         kept.append(act)
-                        spent += affordable_amount * 2
+                        spent += affordable_amount * recruit_cost
                     else:
                         skipped += 1
                 else:
