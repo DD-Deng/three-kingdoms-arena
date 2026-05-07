@@ -162,8 +162,11 @@ def _build_user(state: dict) -> str:
 
     # 联盟状态
     ally = state.get("your_alliance_with")
+    pending = state.get("pending_alliance_from")
     if ally:
         parts.append(f"### 联盟: 与 [{ally}] 结盟中")
+    elif pending:
+        parts.append(f"### 联盟: 无 | [重要!] {pending} 向你提议联盟，回复 alliance_accept 即可结盟")
     else:
         parts.append("### 联盟: 无")
 

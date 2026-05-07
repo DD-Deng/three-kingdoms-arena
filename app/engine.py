@@ -307,7 +307,9 @@ def get_state(session: Session, game_id: int, agent: Agent):
 
     # ── 联盟状态 ────────────────────────────────────────────
     all_alliances = resources_raw.get("_alliances", [])
-    your_alliance_with = resources_raw.get(your_faction, {}).get("alliance_with")
+    your_faction_res = resources_raw.get(your_faction, {})
+    your_alliance_with = your_faction_res.get("alliance_with")
+    pending_alliance_from = your_faction_res.get("pending_alliance_from")
 
     # ── 信用分（仅自己的分数可见） ─────────────────────────
     your_trust = resources_raw.get(your_faction, {}).get("trust_score", TRUST_INITIAL)
@@ -335,6 +337,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "defense_works": your_defense_works,
         "alliances": all_alliances,
         "your_alliance_with": your_alliance_with,
+        "pending_alliance_from": pending_alliance_from,
         "your_trust_score": your_trust,
         "diplomacy_history": diplomacy_history,
         "war_revealed_by": war_revealed_by,

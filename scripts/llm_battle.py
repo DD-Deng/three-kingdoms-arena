@@ -134,8 +134,15 @@ class BattleOrchestrator:
                 "--model", self.model,
                 "--persona", persona,
             ]
-            if self.api_key:
-                cmd.extend(["--api-key", self.api_key])
+            # API key: CLI arg > env var > None
+            agent_key = self.api_key
+            if not agent_key:
+                for env_name in ["DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
+                    agent_key = os.environ.get(env_name)
+                    if agent_key:
+                        break
+            if agent_key:
+                cmd.extend(["--api-key", agent_key])
 
             log_file = open(f"logs/{self.game_id}_{name}.stdout", "w")
             p = subprocess.Popen(
@@ -585,7 +592,14 @@ class BattleOrchestrator:
         )
 
         from openai import OpenAI
-        key = self.api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        key = self.api_key
+        if not key:
+            for env_name in ["DEEPSEEK_API_KEY", "OPENAI_API_KEY"]:
+                key = os.environ.get(env_name)
+                if key:
+                    break
+        if not key:
+            raise RuntimeError("缺少 API key: 请通过 --api-key 传入，或设置 DEEPSEEK_API_KEY 环境变量。")
         client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
         resp = client.chat.completions.create(
             model="deepseek-chat",

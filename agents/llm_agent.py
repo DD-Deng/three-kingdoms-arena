@@ -118,8 +118,12 @@ def _build_provider(model_alias: str, api_key: str | None):
     if model_alias not in PROVIDERS:
         raise SystemExit(f"不支持的模型: {model_alias}。可选: {list(PROVIDERS)}")
     cls, default_model, env_key, base_url = PROVIDERS[model_alias]
-    if api_key is None and env_key:
-        api_key = os.environ.get(env_key, "")
+    if not api_key and env_key:
+        api_key = os.environ.get(env_key)
+    if not api_key:
+        raise SystemExit(
+            f"缺少 API key: 请通过 --api-key 传入，或设置环境变量 {env_key}。"
+        )
     kwargs = {"model": default_model, "api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
@@ -218,7 +222,7 @@ class LLMAgent:
 
     def run(self):
         self._register_if_needed()
-        self._join()
+        self._join_with_retry()
         self._loop()
 
     def _register_if_needed(self):
@@ -252,7 +256,7 @@ class LLMAgent:
             f"[green]已注册并保存凭证到 ~/.arena_credentials/{self.name}.json[/]"
         )
 
-    def _join(self):
+    def _do_join(self):
         resp = self._post(
             f"/games/{self.game_id}/join",
             json_data={
@@ -267,6 +271,24 @@ class LLMAgent:
             f"⚔ {self.name} ({self.faction}) 加入对局 #{self.game_id} "
             f"token={self.token[:8]}…[/]"
         )
+
+    def _join_with_retry(self):
+        """尝试加入对局，若凭证失效则重新注册后重试。"""
+        try:
+            self._do_join()
+        except RuntimeError as e:
+            if "未注册" in str(e) or "agent" in str(e).lower():
+                self.console.print(
+                    f"[yellow]⚠ 凭证失效，重新注册…[/]"
+                )
+                # 删除旧凭证，强制重新注册
+                path = CREDENTIALS_DIR / f"{self.name}.json"
+                if path.exists():
+                    path.unlink()
+                self._register_if_needed()
+                self._do_join()
+            else:
+                raise
 
     # ── 主循环 ─────────────────────────────────────────────────
 
