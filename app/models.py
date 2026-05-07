@@ -54,6 +54,7 @@ class Game(SQLModel, table=True):
     winner: Optional[str] = Field(default=None)
     last_tick_events: Optional[str] = Field(default=None)  # JSON: public events (sanitized)
     last_tick_diplomacy: Optional[str] = Field(default=None)  # JSON: public diplomacy messages
+    last_tick_intentions: Optional[str] = Field(default=None)  # JSON: 上回合攻击意图(不含兵力)
     resources: Optional[str] = Field(default=None)  # JSON: {"蜀":{"grain":500},...}
 
 
