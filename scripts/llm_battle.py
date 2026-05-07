@@ -42,7 +42,7 @@ def main():
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--tick-interval", type=int, default=5,
                         help="每 tick 等待秒数（默认 5）")
-    parser.add_argument("--max-ticks", type=int, default=50)
+    parser.add_argument("--max-ticks", type=int, default=80)
     parser.add_argument("--no-commentary", action="store_true",
                         help="跳过评书解说生成")
     parser.add_argument("--start-server", action="store_true",
@@ -174,6 +174,7 @@ class BattleOrchestrator:
                     "cities": result.get("cities", []),
                     "events": result.get("events", []),
                     "diplomacy": result.get("diplomacy", []),
+                    "attack_intentions": result.get("attack_intentions", []),
                 }
                 tick_data["agent_actions"] = self._read_latest_actions(
                     result.get("tick", 0) - 1)
@@ -183,6 +184,11 @@ class BattleOrchestrator:
                 self._snapshot_power(result)
 
                 live.update(self._build_display(result))
+
+                # ── 每 5 tick 打印实时战报 ──────────────────
+                current_tick = result.get("tick", 0)
+                if current_tick % 5 == 0 and current_tick > 0:
+                    self._print_mid_battle_report(result)
 
                 if result.get("status") == "finished":
                     self.battle_log["final_result"] = result
@@ -446,28 +452,62 @@ class BattleOrchestrator:
         console.print()
         console.print(table)
 
+    # ── 中盘战报 ─────────────────────────────────────────────
+
+    def _print_mid_battle_report(self, result):
+        """每 5 tick 打印一次实时战报。"""
+        tick = result.get("tick", 0)
+        cities = result.get("cities", [])
+
+        table = Table(title=f"📊 第 {tick} 回合 实时战报")
+        table.add_column("势力", style="bold")
+        table.add_column("城池数")
+        table.add_column("总兵力")
+        table.add_column("城池")
+
+        for faction in ["蜀", "魏", "吴"]:
+            faction_cities = [c for c in cities if c["owner"] == faction]
+            total_troops = sum(c["troops"] for c in faction_cities)
+            city_names = "、".join(
+                f"{c['name']}({c['troops']})" for c in faction_cities
+            )
+            color = FACTION_COLORS.get(faction, "white")
+            table.add_row(
+                f"[{color}]{faction}[/]",
+                str(len(faction_cities)),
+                str(total_troops),
+                city_names or "—",
+            )
+
+        console.print(table)
+
     # ── 评书解说 ───────────────────────────────────────────────
 
     def _generate_commentary(self):
         console.print("\n📖 正在生成评书风格解说…")
         try:
-            commentary = self._call_commentary_llm()
+            commentary_md = self._call_commentary_llm()
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = Path(f"logs/battle_{ts}_commentary.txt")
-            path.write_text(commentary, encoding="utf-8")
+            path = Path(f"logs/battle_{ts}_commentary.md")
+            path.write_text(commentary_md, encoding="utf-8")
             console.print(f"📖 评书解说已保存: {path}")
-            console.print(Panel(commentary, title="评书解说"))
+            console.print(Panel(commentary_md[:800], title="评书解说 (预览)"))
         except Exception as e:
             console.print(f"[yellow]⚠ 解说生成失败: {e}[/]")
 
     def _call_commentary_llm(self) -> str:
+        """生成结构化评书解说，输出 JSON 再渲染为 Markdown。"""
         timeline = []
+        alliance_events = []
+        trust_changes = []
+
         for t in self.battle_log.get("ticks", []):
             tick = t["tick"]
             events = t.get("events", [])
             actions = t.get("agent_actions", [])
             cities = t.get("cities", [])
             diplomacy = t.get("diplomacy", [])
+            intentions = t.get("attack_intentions", [])
 
             parts = [f"第 {tick} 回合:"]
             for a in actions:
@@ -475,33 +515,73 @@ class BattleOrchestrator:
                     f"  {a['agent']}({a['faction']}) → {', '.join(a['action_summary'])}"
                 )
             for d in diplomacy:
-                parts.append(f"  {d['from_faction']} 喊话: 「{d.get('message', '')}」")
+                dt = d.get("diplomacy_type", "message")
+                parts.append(f"  {d['from_faction']}[{dt}]: 「{d.get('message', '')}」")
             for ev in events:
                 if ev.get("result") == "captured":
                     parts.append(
-                        f"  战果: {ev.get('captured_by', '?')} 攻占 {ev.get('city', '?')}"
+                        f"  战果: {ev.get('captured_by', '?')} 攻占 {ev.get('city', '?')}（夺自 {ev.get('from', '?')}）"
                     )
                 elif ev.get("result") == "defended":
                     parts.append(
                         f"  战果: {ev.get('defended_by', '?')} 守住 {ev.get('city', '?')}"
                     )
+            for intent in intentions:
+                parts.append(f"  动向: {intent['attacker']} 攻击 {intent['target_city']}")
             city_str = ", ".join(
                 f"{c['name']}({c['owner'] or '无主'},{c['troops']}兵)"
                 for c in cities)
             parts.append(f"  城池: {city_str}")
+
+            # 追踪联盟事件
+            for d in diplomacy:
+                dt = d.get("diplomacy_type", "")
+                if "alliance" in dt:
+                    alliance_events.append(
+                        f"Tick {tick}: {d['from_faction']} {dt} → {d.get('message','')[:50]}"
+                    )
+
             timeline.append("\n".join(parts))
 
         full_timeline = "\n\n".join(timeline)
+        alliance_timeline = "\n".join(alliance_events) if alliance_events else "无联盟事件"
+
+        # 势力演变
+        faction_summary = []
+        for faction in ["蜀", "魏", "吴"]:
+            snapshots = []
+            for snap in self.power_curve:
+                if faction in snap:
+                    snapshots.append(
+                        f"Tick {snap['tick']}: {snap[faction]['cities']}城 {snap[faction]['troops']}兵"
+                    )
+            faction_summary.append(f"{faction}:\n" + "\n".join(snapshots[-10:]))
 
         prompt = (
             "你是一位说书先生，请用中国传统评书风格（像单田芳那样）"
-            "为以下三国策略对战写一段精彩的解说。要求:\n"
+            "为以下三国策略对战写一段精彩的解说。\n\n"
+            "**必须输出 JSON 格式，不要输出其他内容：**\n"
+            "```json\n"
+            "{\n"
+            '  "title": "评书标题（15字以内）",\n'
+            '  "epilogue_classification": "碾压式 / 险胜 / 三方混战 / 联盟胜利",\n'
+            '  "chapters": [\n'
+            '    {"tick_range": "1-5", "title": "章节标题", "narrative": "评书正文..."},\n'
+            '    {"tick_range": "6-10", "title": "...", "narrative": "..."}\n'
+            '  ],\n'
+            '  "final_verse": "正是: ...（押韵收尾，两句或四句）"\n'
+            "}\n"
+            "```\n\n"
+            "要求:\n"
             "- 用评书腔调（「话说」「且说」「列位看官」等）\n"
-            "- 用地道中文，生动描述每回合的攻防\n"
+            "- 用地道中文，生动描述攻防、联盟、背叛\n"
             "- 分析各势力的谋略和得失\n"
-            "- 突出关键时刻的戏剧性\n"
-            "- 控制在 500 字以内\n\n"
-            f"对战记录:\n{full_timeline}"
+            "- 突出关键时刻的戏剧性（背叛、逆转、孤注一掷）\n"
+            "- 每章 narrative 控制在 100 字以内\n"
+            "- chapters 按 tick 分组（每组约 5-10 tick），至少 2 章\n\n"
+            f"势力实力演变:\n{chr(10).join(faction_summary)}\n\n"
+            f"联盟时间线:\n{alliance_timeline}\n\n"
+            f"完整对战记录:\n{full_timeline}"
         )
 
         from openai import OpenAI
@@ -511,9 +591,52 @@ class BattleOrchestrator:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.9,
-            max_tokens=800,
+            max_tokens=1500,
         )
-        return resp.choices[0].message.content
+
+        raw = resp.choices[0].message.content.strip()
+
+        # 尝试解析 JSON，失败则用原文
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+            else:
+                data = json.loads(raw)
+            return self._render_commentary_md(data)
+        except (json.JSONDecodeError, KeyError):
+            # 回退：纯文本
+            return raw
+
+    @staticmethod
+    def _render_commentary_md(data: dict) -> str:
+        """将结构化评书渲染为 Markdown。"""
+        lines = []
+        title = data.get("title", "三国 Arena 评书")
+        classification = data.get("epilogue_classification", "未知")
+        chapters = data.get("chapters", [])
+        final_verse = data.get("final_verse", "")
+
+        lines.append(f"# {title}")
+        lines.append(f"")
+        lines.append(f"**结局分类**: {classification}")
+        lines.append(f"")
+
+        for ch in chapters:
+            tick_range = ch.get("tick_range", "?")
+            ch_title = ch.get("title", "")
+            narrative = ch.get("narrative", "")
+            lines.append(f"## 第{tick_range}回  {ch_title}")
+            lines.append(f"")
+            lines.append(narrative)
+            lines.append(f"")
+
+        if final_verse:
+            lines.append(f"> {final_verse}")
+            lines.append(f"")
+
+        return "\n".join(lines)
 
 
 if __name__ == "__main__":
