@@ -99,3 +99,5 @@ class Action(SQLModel, table=True):
     troops: Optional[int] = None
     amount: Optional[int] = None
     message: Optional[str] = None
+    diplomacy_type: Optional[str] = None  # Step 3: alliance_propose|alliance_accept|alliance_break|declare_war|trade_offer|message
+    trade_terms: Optional[str] = None     # Step 3: JSON for trade_offer

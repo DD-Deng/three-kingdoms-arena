@@ -69,6 +69,18 @@ DEFENSE_WORKS_BONUS = 0.20      # 每点防御度 +20% 防守战力       ——
 # 协同效果: 攻击力相加, 占城后胜方得城, 另一方获"友城标记"(3 tick 互不攻击)
 COORDINATED_ATTACK_WINDOW = 3   # 联盟有效窗口 (tick)           —— §4.2
 
+# ── 外交与信用系统（详见 docs/diplomacy-rules.md） ──────────
+DIPLOMACY_TYPES = [
+    "alliance_propose", "alliance_accept", "alliance_break",
+    "declare_war", "trade_offer", "message",
+]
+TRUST_INITIAL = 100
+TRUST_BETRAYAL_PENALTY = -30      # alliance_break 扣 30
+TRUST_ALLY_ATTACK_PENALTY = -50   # 盟期内攻击盟友扣 50（且自动 break）
+TRUST_RECOVERY_PER_TICK = 5       # 7 tick 不背叛，每 tick +5（上限 100）
+TRUST_REJECT_THRESHOLD = 50       # trust < 50 → 其他人自动拒绝你的联盟提议
+BETRAYAL_COOLDOWN = 5             # 破盟后 5 tick 内联盟提议自动被拒
+
 # 日志目录
 LOG_DIR = Path("logs")
 PUBLIC_LOG_DIR = LOG_DIR / "public"
@@ -127,7 +139,11 @@ def create_game(session: Session) -> int:
         session.add(City(game_id=game.id, name=name, owner=owner, troops=troops))
 
     resources = {
-        f: {"grain": INITIAL_GRAIN.get(f, 500), "debt": 0}
+        f: {
+            "grain": INITIAL_GRAIN.get(f, 500),
+            "debt": 0,
+            "trust_score": TRUST_INITIAL,
+        }
         for f in FACTION_POOL
     }
     game.resources = json.dumps(resources, ensure_ascii=False)
@@ -217,12 +233,23 @@ def get_state(session: Session, game_id: int, agent: Agent):
             if nb not in own_names:
                 adjacent_to_own.add(nb)
 
+    # ── 宣战信息: 被宣战方看到宣战方全部精确兵力 ──────────
+    resources_raw = {}
+    if game.resources:
+        resources_raw = json.loads(game.resources)
+    war_revealed_cities: set[str] = set()
+    war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
+    if war_revealed_by:
+        for c in cities:
+            if c.owner == war_revealed_by:
+                war_revealed_cities.add(c.name)
+
     known_cities = []
     for c in cities:
         if c.name in own_names:
             continue
         owner_display = c.owner if c.owner else "中立"
-        if c.name in adjacent_to_own:
+        if c.name in adjacent_to_own or c.name in war_revealed_cities:
             known_cities.append({
                 "name": c.name,
                 "owner": owner_display,
@@ -269,6 +296,22 @@ def get_state(session: Session, game_id: int, agent: Agent):
     for city_name in own_names:
         your_defense_works[city_name] = resources_raw.get("_defense_works", {}).get(city_name, 0)
 
+    # ── 联盟状态 ────────────────────────────────────────────
+    all_alliances = resources_raw.get("_alliances", [])
+    your_alliance_with = resources_raw.get(your_faction, {}).get("alliance_with")
+
+    # ── 信用分（仅自己的分数可见） ─────────────────────────
+    your_trust = resources_raw.get(your_faction, {}).get("trust_score", TRUST_INITIAL)
+
+    # ── 外交历史（最近 5 tick 的外交事件） ────────────────
+    diplomacy_history = [
+        e for e in resources_raw.get("_diplomacy_history", [])
+        if game.tick - e.get("tick", 0) <= 5
+    ]
+
+    # ── 宣战信息: 是否有人对你宣战 ────────────────────────
+    war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
+
     return {
         "tick": game.tick,
         "status": game.status,
@@ -281,6 +324,11 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "public_diplomacy_last_tick": diplomacy,
         "last_tick_intentions": last_intentions,
         "defense_works": your_defense_works,
+        "alliances": all_alliances,
+        "your_alliance_with": your_alliance_with,
+        "your_trust_score": your_trust,
+        "diplomacy_history": diplomacy_history,
+        "war_revealed_by": war_revealed_by,
         "valid_actions": valid_actions,
     }
 
@@ -419,6 +467,12 @@ def submit_actions(
             target_city = city_map.get(target)
             if target_city and target_city.owner == agent.faction:
                 raise ValueError(f"不能攻击自己的城 [{target}]")
+            # §联盟约束: 不能攻击盟友的城
+            my_alliance = faction_res.get("alliance_with")
+            if target_city and my_alliance and target_city.owner == my_alliance:
+                raise ValueError(
+                    f"不能攻击盟友 [{my_alliance}] 的城 [{target}]，请先 alliance_break"
+                )
             total_grain_cost += troops * 1
 
         elif action_type == "defend":
@@ -462,13 +516,56 @@ def submit_actions(
 
         elif action_type == "diplomacy":
             target = act["target"]
+            diplomacy_type = act.get("diplomacy_type", "message")
             message = act.get("message", "")
             if target not in FACTION_POOL:
                 raise ValueError(f"外交目标必须是有效势力: {FACTION_POOL}")
             if target == agent.faction:
                 raise ValueError("不能对自己外交")
+            if diplomacy_type not in DIPLOMACY_TYPES:
+                raise ValueError(f"未知外交类型: {diplomacy_type}")
             if len(message) > 200:
                 raise ValueError(f"外交发言不能超过 200 字，当前 {len(message)} 字")
+
+            # ── 信用/联盟约束校验 ──────────────────────────
+            trust = faction_res.get("trust_score", TRUST_INITIAL)
+            betrayal_until = faction_res.get("betrayal_until", 0)
+            my_alliance = faction_res.get("alliance_with")
+
+            if diplomacy_type == "alliance_propose":
+                if trust < TRUST_REJECT_THRESHOLD:
+                    raise ValueError(
+                        f"信用过低（{trust} < {TRUST_REJECT_THRESHOLD}），"
+                        f"其他势力会自动拒绝你的联盟提议"
+                    )
+                if game.tick < betrayal_until:
+                    raise ValueError(
+                        f"背信冷却中（至 tick {betrayal_until}），无法提议联盟"
+                    )
+                if my_alliance:
+                    raise ValueError(f"你已与 [{my_alliance}] 联盟，请先 break")
+
+            elif diplomacy_type == "alliance_accept":
+                if my_alliance:
+                    raise ValueError(f"你已与 [{my_alliance}] 联盟，请先 break")
+                # 检查对方是否向你提议过联盟
+                # 当 target 向你提议时，faction_res["pending_alliance_from"] == target
+                if faction_res.get("pending_alliance_from") != target:
+                    raise ValueError(
+                        f"[{target}] 未向你提议联盟，无法接受"
+                    )
+
+            elif diplomacy_type == "alliance_break":
+                if my_alliance != target:
+                    raise ValueError(f"你未与 [{target}] 联盟，无法 break")
+
+            elif diplomacy_type == "declare_war":
+                pass  # 宣战无前置条件
+
+            elif diplomacy_type == "trade_offer":
+                trade_terms = act.get("trade_terms", {})
+                if not trade_terms:
+                    raise ValueError("trade_offer 必须提供 trade_terms")
 
         else:
             raise ValueError(f"未知动作类型: {action_type}")
@@ -507,6 +604,8 @@ def submit_actions(
             troops=act.get("troops"),
             amount=act.get("amount"),
             message=act.get("message"),
+            diplomacy_type=act.get("diplomacy_type"),
+            trade_terms=json.dumps(act.get("trade_terms"), ensure_ascii=False) if act.get("trade_terms") else None,
         )
         session.add(action)
 
@@ -583,22 +682,147 @@ def tick(session: Session, game_id: int):
     agent_map = {a.id: a for a in agents}
     city_map = {c.name: c for c in cities}
 
-    # ── 1. 收集外交消息 ──────────────────────────────────────
+    # ── 1. 处理外交动作 ──────────────────────────────────────
+    resources = json.loads(game.resources) if game.resources else {}
     diplomacy_messages: list[dict] = []
+    diplomacy_events: list[dict] = []  # 外交事件日志（用于 private_log / state）
+
+    # 初始化信用分和联盟状态
+    for f in FACTION_POOL:
+        if f not in resources:
+            resources[f] = {"grain": INITIAL_GRAIN.get(f, 500), "debt": 0}
+        if "trust_score" not in resources[f]:
+            resources[f]["trust_score"] = TRUST_INITIAL
+
+    # 收集所有外交动作，按 faction 分组
+    faction_diplomacy: dict[str, list] = defaultdict(list)
     for a in actions:
         if a.type == "diplomacy":
             ag = agent_map.get(a.agent_id)
-            if ag and a.message:
-                # Check if we already recorded this agent's speech this tick
-                already = any(
-                    d["from_faction"] == ag.faction
-                    for d in diplomacy_messages
-                )
-                if not already:
-                    diplomacy_messages.append({
-                        "from_faction": ag.faction,
-                        "message": a.message,
+            if ag:
+                faction_diplomacy[ag.faction].append(a)
+
+    for faction, diplo_actions in faction_diplomacy.items():
+        for a in diplo_actions:
+            ag = agent_map.get(a.agent_id)
+            if ag is None:
+                continue
+            d_type = a.diplomacy_type or "message"
+            target = a.target
+            msg = a.message or ""
+            fres = resources[faction]
+            tres = resources.get(target, {})
+
+            # ── 记录公开外交消息 ──────────────────────────
+            already = any(
+                d["from_faction"] == faction
+                for d in diplomacy_messages
+            )
+            if not already and msg:
+                diplomacy_messages.append({
+                    "from_faction": faction,
+                    "message": msg,
+                    "diplomacy_type": d_type,
+                })
+
+            # ── alliance_propose: 发起联盟提议 ────────────
+            if d_type == "alliance_propose":
+                tres["pending_alliance_from"] = faction
+                diplomacy_events.append({
+                    "tick": game.tick,
+                    "type": "alliance_propose",
+                    "from": faction,
+                    "to": target,
+                })
+
+            # ── alliance_accept: 接受联盟 ──────────────────
+            elif d_type == "alliance_accept":
+                # 建立联盟关系
+                fres["alliance_with"] = target
+                fres["alliance_since"] = game.tick
+                tres["alliance_with"] = faction
+                tres["alliance_since"] = game.tick
+                # 清除 pending
+                fres.pop("pending_alliance_to", None)
+                tres.pop("pending_alliance_from", None)
+                diplomacy_events.append({
+                    "tick": game.tick,
+                    "type": "alliance_formed",
+                    "factions": [faction, target],
+                    "since_tick": game.tick,
+                })
+                # 存储全局联盟列表
+                alliances = resources.get("_alliances", [])
+                alliances.append({
+                    "factions": sorted([faction, target]),
+                    "since_tick": game.tick,
+                })
+                resources["_alliances"] = alliances
+
+            # ── alliance_break: 破盟 ───────────────────────
+            elif d_type == "alliance_break":
+                ally = fres.get("alliance_with")
+                if ally == target:
+                    fres.pop("alliance_with", None)
+                    fres.pop("alliance_since", None)
+                    fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
+                    fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
+                    # 对方也解除
+                    tres.pop("alliance_with", None)
+                    tres.pop("alliance_since", None)
+                    # 移除全局联盟记录
+                    alliances = resources.get("_alliances", [])
+                    resources["_alliances"] = [
+                        al for al in alliances
+                        if sorted(al["factions"]) != sorted([faction, target])
+                    ]
+                    diplomacy_events.append({
+                        "tick": game.tick,
+                        "type": "alliance_broken",
+                        "by": faction,
+                        "with": target,
+                        "penalty": TRUST_BETRAYAL_PENALTY,
                     })
+
+            # ── declare_war: 宣战 ──────────────────────────
+            elif d_type == "declare_war":
+                fres["war_declared_on"] = target
+                fres["war_declared_at"] = game.tick
+                # 对被宣战方: 下一 tick 可看到宣战方所有城精确兵力
+                tres["war_revealed_by"] = faction
+                tres["war_revealed_until"] = game.tick + 1
+                diplomacy_events.append({
+                    "tick": game.tick,
+                    "type": "declare_war",
+                    "from": faction,
+                    "to": target,
+                })
+
+            # ── trade_offer: 贸易提议 ────────────────────
+            elif d_type == "trade_offer":
+                trade_terms = json.loads(a.trade_terms) if a.trade_terms else {}
+                tres["pending_trade_from"] = faction
+                tres["pending_trade_terms"] = trade_terms
+                diplomacy_events.append({
+                    "tick": game.tick,
+                    "type": "trade_offer",
+                    "from": faction,
+                    "to": target,
+                    "terms": trade_terms,
+                })
+
+            # ── message: 纯文本 ────────────────────────────
+            # 无额外处理，仅记录在上方 diplomacy_messages 中
+
+    # ── 信任恢复: 每 tick +5（7 tick 未背叛的势力） ──────
+    for f in FACTION_POOL:
+        fres = resources.get(f, {})
+        if not fres.get("alliance_with"):
+            betrayal_until = fres.get("betrayal_until", 0)
+            if game.tick >= betrayal_until:
+                current = fres.get("trust_score", TRUST_INITIAL)
+                if current < TRUST_INITIAL:
+                    fres["trust_score"] = min(TRUST_INITIAL, current + TRUST_RECOVERY_PER_TICK)
 
     # ── 2. 按城池分组，结算战斗 ────────────────────────────
     combat_actions = [a for a in actions if a.type in ("attack", "defend")]
@@ -608,8 +832,7 @@ def tick(session: Session, game_id: int):
     combat_events: list[dict] = []
     private_combat_detail: list[dict] = []
 
-    # ── 加载防御工事数据 ──────────────────────────────────
-    resources = json.loads(game.resources) if game.resources else {}
+    # ── 加载防御工事数据（resources 已在 §1 中加载并含外交变更） ─
     defense_works: dict[str, int] = resources.get("_defense_works", {})
 
     # ── 收集攻击意图（下回合公示） ─────────────────────────
@@ -822,6 +1045,12 @@ def tick(session: Session, game_id: int):
         if resources[faction]["grain"] >= 0 and resources[faction].get("recruit_penalty"):
             del resources[faction]["recruit_penalty"]
             resources[faction]["debt"] = 0
+
+    # ── 追加外交历史 ──────────────────────────────────────
+    history = resources.get("_diplomacy_history", [])
+    history.extend(diplomacy_events)
+    # 只保留最近 20 条
+    resources["_diplomacy_history"] = history[-20:]
 
     game.resources = json.dumps(resources, ensure_ascii=False)
 

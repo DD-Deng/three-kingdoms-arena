@@ -725,3 +725,219 @@ def test_defense_works_reset_on_capture():
     r = client.get(f"/games/{gid}/state", params={"token": token_wei})
     state = r.json()
     assert state["defense_works"].get("宛城", 0) == 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Step 3 新增测试 —— 外交约束系统
+# ═══════════════════════════════════════════════════════════════
+
+def test_alliance_propose_accept():
+    """联盟提议→接受流程。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wu = _register_and_join("吴", "孙权", gid)
+
+    # 蜀向吴提议联盟
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "蜀吴联盟，共抗曹魏"},
+    ])
+    assert r.status_code == 200
+
+    _tick(gid)
+
+    # 吴接受蜀的联盟提议
+    r = _submit(token_wu, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意联盟"},
+    ])
+    assert r.status_code == 200
+
+    _tick(gid)
+
+    # 双方 state 应显示联盟关系
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    assert r.json()["your_alliance_with"] == "吴"
+
+    r = client.get(f"/games/{gid}/state", params={"token": token_wu})
+    assert r.json()["your_alliance_with"] == "蜀"
+
+    # alliances 全局列表应包含该联盟
+    assert len(r.json()["alliances"]) >= 1
+
+
+def test_attack_ally_blocked():
+    """联盟后不能攻击盟友的城。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wu = _register_and_join("吴", "孙权", gid)
+
+    # 结成联盟
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "结盟"},
+    ])
+    _tick(gid)
+    r = _submit(token_wu, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意"},
+    ])
+    _tick(gid)
+
+    # 蜀试图攻击吴的襄阳 → 应被拒绝
+    r = _submit(token_shu, gid, [
+        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 300},
+    ])
+    assert r.status_code == 400
+    assert "盟友" in r.json()["detail"]
+
+
+def test_alliance_break_trust_penalty():
+    """破盟扣信用分 30。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wu = _register_and_join("吴", "孙权", gid)
+
+    # 结盟
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "结盟"},
+    ])
+    _tick(gid)
+    r = _submit(token_wu, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意"},
+    ])
+    _tick(gid)
+
+    # 蜀初始信用 100
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    assert r.json()["your_trust_score"] == 100
+
+    # 蜀破盟
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_break",
+         "message": "联盟已废"},
+    ])
+    assert r.status_code == 200
+    _tick(gid)
+
+    # 蜀信用应为 70（100 - 30）
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    assert r.json()["your_trust_score"] == 70
+    assert r.json()["your_alliance_with"] is None
+
+
+def test_low_trust_alliance_rejected():
+    """信用 < 50 时联盟提议被自动拒绝。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wei = _register_and_join("魏", "曹操", gid)
+    token_wu = _register_and_join("吴", "孙权", gid)
+
+    # 蜀与魏结盟→破盟（信用 100→70）
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "魏", "diplomacy_type": "alliance_propose",
+         "message": "联盟"},
+    ])
+    _tick(gid)
+    r = _submit(token_wei, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意"},
+    ])
+    _tick(gid)
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "魏", "diplomacy_type": "alliance_break",
+         "message": "破"},
+    ])
+    _tick(gid)
+    # 信任 70, betrayal_until = tick+5 → 背信冷却中，无法提议
+
+    # 背信冷却期内尝试提议 → 应被拒绝
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "联盟"},
+    ])
+    assert r.status_code == 400
+    assert "冷却" in r.json()["detail"]
+
+    # 等待背信冷却过期 + 信任恢复再做一轮，将信用压到 < 50
+    for _ in range(6):
+        _tick(gid)
+
+    # 与吴结盟→破盟（信任再次 -30，从 ~85→55）
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "联盟"},
+    ])
+    _tick(gid)
+    r = _submit(token_wu, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意"},
+    ])
+    _tick(gid)
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_break",
+         "message": "破"},
+    ])
+    _tick(gid)
+
+    # 第二次背信，信任 < 60
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    trust = r.json()["your_trust_score"]
+    assert trust < 60, f"预期信任 < 60（两次背信 + 少量恢复），实际 {trust}"
+
+    # 背信冷却中，无法提议
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "魏", "diplomacy_type": "alliance_propose",
+         "message": "再给机会"},
+    ])
+    assert r.status_code == 400
+    assert "冷却" in r.json()["detail"]
+
+
+def test_declare_war_reveals_troops():
+    """宣战后被宣战方可以看到宣战方所有城的精确兵力。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wei = _register_and_join("魏", "曹操", gid)
+
+    # 魏对蜀宣战
+    r = _submit(token_wei, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "declare_war",
+         "message": "尔等速降！"},
+    ])
+    _tick(gid)
+
+    # 蜀的 state 应能看到魏所有城的精确兵力
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+    # 洛阳属魏，蜀不邻接，但宣战后应有精确兵力
+    luoyang = [c for c in state["known_cities"] if c["name"] == "洛阳"][0]
+    assert "troops" in luoyang, f"宣战后应能看到洛阳精确兵力: {luoyang}"
+    assert luoyang["info_freshness"] == "current"
+
+
+def test_diplomacy_type_validation():
+    """无效的 diplomacy_type 被拒绝。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "魏", "diplomacy_type": "invalid_type",
+         "message": "hello"},
+    ])
+    assert r.status_code == 400
+    assert "未知外交类型" in r.json()["detail"]
