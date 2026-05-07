@@ -16,8 +16,9 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.layout import Layout
+from rich.console import Group
 
-# Ensure project root is on path
 _src = Path(__file__).resolve().parent.parent
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
@@ -41,7 +42,7 @@ def main():
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--tick-interval", type=int, default=5,
                         help="每 tick 等待秒数（默认 5）")
-    parser.add_argument("--max-ticks", type=int, default=30)
+    parser.add_argument("--max-ticks", type=int, default=50)
     parser.add_argument("--no-commentary", action="store_true",
                         help="跳过评书解说生成")
     parser.add_argument("--start-server", action="store_true",
@@ -92,21 +93,23 @@ class BattleOrchestrator:
             "ticks": [],
             "final_result": {},
         }
+        # 势力实力变化曲线
+        self.power_curve: list[dict] = []
 
     # ── 主流程 ─────────────────────────────────────────────────
 
     def run(self):
         console.print(Panel("⚔ 三国 AI Agent 竞技平台 ⚔", style="bold yellow"))
-        console.print(f"模型: {self.model} | 服务器: {self.server}")
+        console.print(f"模型: {self.model} | 服务器: {self.server} | 上限: {self.max_ticks} ticks")
 
         self._create_game()
         self._start_agents()
         self._tick_loop()
 
-        # 收尾
         self._terminate_agents()
         self._save_battle_log()
         self._print_final_report()
+        self._print_power_curve()
 
         if self.model != "mock" and not self.no_commentary:
             self._generate_commentary()
@@ -142,17 +145,17 @@ class BattleOrchestrator:
                 text=True,
             )
             self.agent_procs.append((p, name, faction))
-            time.sleep(0.3)
+            time.sleep(0.5)
 
         # 等待所有 agent 加入
-        time.sleep(1)
+        time.sleep(2)
         console.print("3 个 agent 已就绪\n")
 
     # ── Tick 循环 ──────────────────────────────────────────────
 
     def _tick_loop(self):
         console.rule("对战开始")
-        time.sleep(1)  # 给 agent 时间提交第一个动作
+        time.sleep(1)
 
         with Live(self._build_display(None), console=console,
                   refresh_per_second=4, transient=False) as live:
@@ -170,11 +173,14 @@ class BattleOrchestrator:
                     "winner": result.get("winner"),
                     "cities": result.get("cities", []),
                     "events": result.get("events", []),
+                    "diplomacy": result.get("diplomacy", []),
                 }
-                # 补充 agent 动作（从 JSONL 日志读取）
                 tick_data["agent_actions"] = self._read_latest_actions(
                     result.get("tick", 0) - 1)
                 self.battle_log["ticks"].append(tick_data)
+
+                # 势力实力快照
+                self._snapshot_power(result)
 
                 live.update(self._build_display(result))
 
@@ -187,20 +193,29 @@ class BattleOrchestrator:
 
         console.rule("对战结束")
 
+    # ── 势力实力快照 ───────────────────────────────────────────
+
+    def _snapshot_power(self, result):
+        cities = result.get("cities", [])
+        snapshot = {"tick": result.get("tick", 0)}
+        for faction in ["蜀", "魏", "吴"]:
+            faction_cities = [c for c in cities if c["owner"] == faction]
+            total_troops = sum(c["troops"] for c in faction_cities)
+            snapshot[faction] = {
+                "cities": len(faction_cities),
+                "troops": total_troops,
+            }
+        self.power_curve.append(snapshot)
+
     # ── Rich 显示 ──────────────────────────────────────────────
 
     def _build_display(self, result):
-        """构建 Rich 渲染内容。"""
-        from rich.layout import Layout
-        from rich.console import Group
-
         layout = Layout()
         layout.split_column(
             Layout(name="header", size=3),
             Layout(name="body"),
         )
 
-        # Header
         tick = result.get("tick", 0) if result else 0
         status = result.get("status", "waiting") if result else "waiting"
         winner = result.get("winner") if result else None
@@ -209,7 +224,6 @@ class BattleOrchestrator:
             header_text += f"  |  胜者: {winner}"
         layout["header"].update(Panel(header_text, style="bold cyan"))
 
-        # Body
         body_parts = []
 
         # 城池表
@@ -235,23 +249,49 @@ class BattleOrchestrator:
         if events:
             event_lines = []
             for ev in events:
-                city = ev["city"]
-                attacker = ev["attacker"]
-                defender = ev.get("defender", "?")
+                city = ev.get("city", "?")
                 if ev.get("result") == "captured":
                     event_lines.append(
-                        f"[{FACTION_COLORS.get(attacker, 'white')}]{attacker}[/] "
-                        f"⚔ 攻占 {city}（夺自 {defender}，剩 {ev.get('troops_remaining', '?')} 兵）"
+                        f"[{FACTION_COLORS.get(ev.get('captured_by', ''), 'white')}]"
+                        f"{ev.get('captured_by', '?')}[/] ⚔ 攻占 {city}"
+                        f"（夺自 {ev.get('from', '?')}）"
+                    )
+                elif ev.get("result") == "defended":
+                    event_lines.append(
+                        f"[{FACTION_COLORS.get(ev.get('defended_by', ''), 'white')}]"
+                        f"{ev.get('defended_by', '?')}[/] 🛡 守住 {city}"
                     )
                 else:
-                    event_lines.append(
-                        f"[{FACTION_COLORS.get(defender, 'white')}]{defender}[/] "
-                        f"🛡 守住 {city}（击退 {attacker}，剩 {ev.get('troops_remaining', '?')} 兵）"
-                    )
+                    # recruit / march events
+                    etype = ev.get("type", ev.get("event_type", ""))
+                    if etype == "recruit":
+                        event_lines.append(
+                            f"[dim]{ev.get('faction', '?')} 在 {city} 招募[/]"
+                        )
+                    elif etype == "march":
+                        event_lines.append(
+                            f"[dim]{ev.get('faction', '?')} 从 {ev.get('from', '?')} 行军至 {ev.get('to', '?')}[/]"
+                        )
             body_parts.append(Panel(
                 "\n".join(event_lines),
                 title="⚡ 本回合战报",
                 border_style="yellow",
+            ))
+            body_parts.append(Text(""))
+
+        # 外交消息
+        diplomacy = result.get("diplomacy", []) if result else []
+        if diplomacy:
+            dip_lines = []
+            for d in diplomacy:
+                color = FACTION_COLORS.get(d.get("from_faction", ""), "white")
+                dip_lines.append(
+                    f"[{color}]{d['from_faction']}[/]: 「{d.get('message', '')}」"
+                )
+            body_parts.append(Panel(
+                "\n".join(dip_lines),
+                title="📢 外交喊话",
+                border_style="magenta",
             ))
             body_parts.append(Text(""))
 
@@ -261,11 +301,15 @@ class BattleOrchestrator:
             action_lines = []
             for a in actions:
                 color = FACTION_COLORS.get(a["faction"], "white")
+                act_desc = ", ".join(a["action_summary"])
+                public_speech = a.get("public_speech", "")
                 action_lines.append(
-                    f"[{color}]{a['agent']}({a['faction']})[/] → "
-                    f"`{a['type']}` **{a['target']}**  "
-                    f"[italic]\"{a['thought']}\"[/italic]"
+                    f"[{color}]{a['agent']}({a['faction']})[/] → {act_desc}"
                 )
+                if public_speech:
+                    action_lines.append(
+                        f"  [{color}]📢 {a['agent']}: 「{public_speech}」[/]"
+                    )
             body_parts.append(Panel(
                 "\n".join(action_lines),
                 title="🎯 Agent 动作",
@@ -294,12 +338,38 @@ class BattleOrchestrator:
                         continue
                     try:
                         parsed = json.loads(entry.get("raw_response", "{}"))
+                        agent_actions = parsed.get("actions", [])
+                        # 兼容旧格式
+                        if not agent_actions and "action" in parsed:
+                            agent_actions = [parsed["action"]]
+
+                        action_summary = []
+                        for act in agent_actions:
+                            atype = act.get("type", "?")
+                            if atype == "attack":
+                                action_summary.append(
+                                    f"attack {act.get('from', '?')}→{act.get('target', '?')}({act.get('troops', '?')}兵)"
+                                )
+                            elif atype == "recruit":
+                                action_summary.append(
+                                    f"recruit {act.get('target', '?')}(+{act.get('amount', '?')})"
+                                )
+                            elif atype == "march":
+                                action_summary.append(
+                                    f"march {act.get('from', '?')}→{act.get('to', '?')}({act.get('troops', '?')}兵)"
+                                )
+                            elif atype == "defend":
+                                action_summary.append(f"defend {act.get('target', '?')}")
+                            elif atype == "diplomacy":
+                                action_summary.append(f"diplomacy → {act.get('target', '?')}")
+                            else:
+                                action_summary.append(f"{atype}")
+
                         actions.append({
                             "agent": name,
                             "faction": faction,
-                            "thought": parsed.get("thought", ""),
-                            "type": parsed.get("action", {}).get("type", "?"),
-                            "target": parsed.get("action", {}).get("target", "?"),
+                            "action_summary": action_summary,
+                            "public_speech": parsed.get("public_speech", ""),
                         })
                         break
                     except json.JSONDecodeError:
@@ -340,18 +410,41 @@ class BattleOrchestrator:
                         if winner else "平局")
         report.add_row("使用模型", self.model)
 
-        # 每回合城池变化概要
         if ticks:
             summary_lines = []
-            for t in ticks:
+            for t in ticks[-5:]:  # 最后 5 个 tick
                 city_str = " | ".join(
                     f"{c['name']}:{c['owner'] or '—'}({c['troops']})"
                     for c in t.get("cities", [])
                 )
                 summary_lines.append(f"Tick {t['tick']}: {city_str}")
-            report.add_row("城池演变", "\n".join(summary_lines))
+            report.add_row("最后 5 回合城池演变", "\n".join(summary_lines))
 
         console.print(report)
+
+    def _print_power_curve(self):
+        """打印势力实力变化曲线（表格形式）。"""
+        if not self.power_curve:
+            return
+
+        table = Table(title="📊 势力实力变化曲线")
+        table.add_column("Tick", style="dim")
+        for faction in ["蜀", "魏", "吴"]:
+            color = FACTION_COLORS.get(faction, "white")
+            table.add_column(f"[{color}]{faction} 城池[/]", justify="center")
+            table.add_column(f"[{color}]{faction} 总兵力[/]", justify="right")
+
+        for snap in self.power_curve:
+            tick = str(snap["tick"])
+            row = [tick]
+            for faction in ["蜀", "魏", "吴"]:
+                fdata = snap.get(faction, {"cities": 0, "troops": 0})
+                row.append(str(fdata["cities"]))
+                row.append(str(fdata["troops"]))
+            table.add_row(*row)
+
+        console.print()
+        console.print(table)
 
     # ── 评书解说 ───────────────────────────────────────────────
 
@@ -368,29 +461,30 @@ class BattleOrchestrator:
             console.print(f"[yellow]⚠ 解说生成失败: {e}[/]")
 
     def _call_commentary_llm(self) -> str:
-        """调用 LLM 生成评书风格战局解说。"""
-        # 构建战局时间线
         timeline = []
         for t in self.battle_log.get("ticks", []):
             tick = t["tick"]
             events = t.get("events", [])
             actions = t.get("agent_actions", [])
             cities = t.get("cities", [])
+            diplomacy = t.get("diplomacy", [])
 
             parts = [f"第 {tick} 回合:"]
             for a in actions:
                 parts.append(
-                    f"  {a['agent']}({a['faction']}) {a['type']} {a['target']}"
-                    f"（心思: {a['thought']}）")
+                    f"  {a['agent']}({a['faction']}) → {', '.join(a['action_summary'])}"
+                )
+            for d in diplomacy:
+                parts.append(f"  {d['from_faction']} 喊话: 「{d.get('message', '')}」")
             for ev in events:
                 if ev.get("result") == "captured":
                     parts.append(
-                        f"  战果: {ev['attacker']} 攻占 {ev['city']}，"
-                        f"剩余 {ev.get('troops_remaining', '?')} 兵")
-                else:
+                        f"  战果: {ev.get('captured_by', '?')} 攻占 {ev.get('city', '?')}"
+                    )
+                elif ev.get("result") == "defended":
                     parts.append(
-                        f"  战果: {ev['defender']} 守住 {ev['city']}，"
-                        f"剩余 {ev.get('troops_remaining', '?')} 兵")
+                        f"  战果: {ev.get('defended_by', '?')} 守住 {ev.get('city', '?')}"
+                    )
             city_str = ", ".join(
                 f"{c['name']}({c['owner'] or '无主'},{c['troops']}兵)"
                 for c in cities)
@@ -410,7 +504,6 @@ class BattleOrchestrator:
             f"对战记录:\n{full_timeline}"
         )
 
-        # 用 DeepSeek 生成（便宜且中文好）
         from openai import OpenAI
         key = self.api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
