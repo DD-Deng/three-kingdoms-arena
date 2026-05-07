@@ -244,12 +244,21 @@ def get_state(session: Session, game_id: int, agent: Agent):
             if c.owner == war_revealed_by:
                 war_revealed_cities.add(c.name)
 
+    # ── 联盟信息共享: 盟友间看到彼此精确兵力 ──────────────
+    alliance_cities: set[str] = set()
+    my_ally = resources_raw.get(your_faction, {}).get("alliance_with")
+    if my_ally:
+        for c in cities:
+            if c.owner == my_ally:
+                alliance_cities.add(c.name)
+
     known_cities = []
+    visible_cities = adjacent_to_own | war_revealed_cities | alliance_cities
     for c in cities:
         if c.name in own_names:
             continue
         owner_display = c.owner if c.owner else "中立"
-        if c.name in adjacent_to_own or c.name in war_revealed_cities:
+        if c.name in visible_cities:
             known_cities.append({
                 "name": c.name,
                 "owner": owner_display,

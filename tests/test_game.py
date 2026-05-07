@@ -941,3 +941,48 @@ def test_diplomacy_type_validation():
     ])
     assert r.status_code == 400
     assert "未知外交类型" in r.json()["detail"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# Step 4 新增测试 —— 信息透明度
+# ═══════════════════════════════════════════════════════════════
+
+def test_alliance_info_sharing():
+    """联盟方互相看到精确兵力（即使城不邻接）。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wu = _register_and_join("吴", "孙权", gid)
+
+    # 蜀吴结盟
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_propose",
+         "message": "联盟"},
+    ])
+    _tick(gid)
+    r = _submit(token_wu, gid, [
+        {"type": "diplomacy", "target": "蜀", "diplomacy_type": "alliance_accept",
+         "message": "同意"},
+    ])
+    _tick(gid)
+
+    # 蜀视角：应能看到吴的建业精确兵力（建业不邻接蜀任何城，仅邻接襄阳）
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+    jianye = [c for c in state["known_cities"] if c["name"] == "建业"][0]
+    assert "troops" in jianye, f"联盟后应看到盟友建业精确兵力: {jianye}"
+    assert jianye["info_freshness"] == "current"
+
+    # 破盟后应失去精确信息
+    r = _submit(token_shu, gid, [
+        {"type": "diplomacy", "target": "吴", "diplomacy_type": "alliance_break",
+         "message": "破"},
+    ])
+    _tick(gid)
+
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+    jianye = [c for c in state["known_cities"] if c["name"] == "建业"][0]
+    assert "troops_estimate" in jianye  # 破盟后恢复模糊
+    assert jianye["info_freshness"] == "rumor"
