@@ -2,6 +2,8 @@ import json
 import math
 import random
 from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
 from sqlmodel import Session, select
 from .models import Game, Agent, City, Action, Player, RegisteredAgent
 
@@ -23,7 +25,6 @@ CITY_ADJACENCY: dict[str, list[str]] = {
     "建业": ["襄阳"],
 }
 
-# 初始归属
 INITIAL_OWNERSHIP: dict[str, str | None] = {
     "洛阳": "魏",
     "长安": "魏",
@@ -41,13 +42,18 @@ INITIAL_GRAIN = 500
 GRAIN_PER_CITY = 100
 
 # 战斗参数
-DEFEND_BONUS_MULTIPLIER = 0.5    # defend 动作：守城兵力 × 1.5
-ATTACKER_WIN_LOSS = 0.30         # 胜方损失 30%
-ATTACKER_LOSE_LOSS = 1.00        # 败方全军覆没
-DEFENDER_WIN_LOSS = 0.50         # 守方胜时损失 50%
-DEFENDER_LOSE_LOSS = 0.30        # 守方败时损失 30%（多方进攻中其他进攻方也用这个）
-GARRISON_MIN = 100               # 出兵城留守底线
-MAX_RECRUIT_PER_CITY = 200       # 每城每回合最多招募
+DEFEND_BONUS_MULTIPLIER = 0.5
+ATTACKER_WIN_LOSS = 0.30
+ATTACKER_LOSE_LOSS = 1.00
+DEFENDER_WIN_LOSS = 0.50
+DEFENDER_LOSE_LOSS = 0.30
+GARRISON_MIN = 100
+MAX_RECRUIT_PER_CITY = 200
+
+# 日志目录
+LOG_DIR = Path("logs")
+PUBLIC_LOG_DIR = LOG_DIR / "public"
+PRIVATE_LOG_DIR = LOG_DIR / "private"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -153,10 +159,17 @@ def join_game(
 
 
 # ═══════════════════════════════════════════════════════════════
-# 视角内状态
+# 信息隔离：按势力视角返回 state
 # ═══════════════════════════════════════════════════════════════
 
 def get_state(session: Session, game_id: int, agent: Agent):
+    """按 token 视角返回 state —— 隐私隔离。
+
+    关键约束：
+    - 邻接城：精确兵力
+    - 远处城：模糊估计 (low/medium/high)
+    - 看不到其他 agent 的 private_thought
+    """
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
@@ -165,52 +178,95 @@ def get_state(session: Session, game_id: int, agent: Agent):
 
     your_faction = agent.faction
 
-    your_cities = [
-        {"name": c.name, "troops": c.troops}
-        for c in cities
-        if c.owner == your_faction
-    ]
+    # ── 你的城池（精确信息） ──────────────────────────────
+    your_cities = []
+    own_names = set()
+    for c in cities:
+        if c.owner == your_faction:
+            neighbors = CITY_ADJACENCY.get(c.name, [])
+            your_cities.append({
+                "name": c.name,
+                "troops": c.troops,
+                "neighbors": neighbors,
+            })
+            own_names.add(c.name)
 
-    all_cities = [
-        {"name": c.name, "owner": c.owner, "troops": c.troops}
-        for c in cities
-    ]
+    # ── 已知城池（按距离分层） ────────────────────────────
+    # 计算所有与我方城池邻接的外部城
+    adjacent_to_own: set[str] = set()
+    for name in own_names:
+        for nb in CITY_ADJACENCY.get(name, []):
+            if nb not in own_names:
+                adjacent_to_own.add(nb)
 
+    known_cities = []
+    for c in cities:
+        if c.name in own_names:
+            continue
+        owner_display = c.owner if c.owner else "中立"
+        if c.name in adjacent_to_own:
+            known_cities.append({
+                "name": c.name,
+                "owner": owner_display,
+                "troops": c.troops,
+                "info_freshness": "current",
+            })
+        else:
+            known_cities.append({
+                "name": c.name,
+                "owner": owner_display,
+                "troops_estimate": _classify_troops(c.troops),
+                "info_freshness": "rumor",
+            })
+
+    # ── 资源 ──────────────────────────────────────────────
     resources = {}
     if game.resources:
         resources = json.loads(game.resources)
     your_resources = resources.get(your_faction, {"grain": 0})
 
+    # ── 合法动作 ──────────────────────────────────────────
     valid_actions = _compute_valid_actions(cities, your_faction, your_resources)
 
-    last_events = []
+    # ── 公开事件（上回合） ────────────────────────────────
+    public_events = []
     if game.last_tick_events:
-        last_events = json.loads(game.last_tick_events)
+        public_events = json.loads(game.last_tick_events)
+
+    # ── 外交消息（上回合） ────────────────────────────────
+    diplomacy = []
+    if game.last_tick_diplomacy:
+        diplomacy = json.loads(game.last_tick_diplomacy)
 
     return {
-        "game_id": game.id,
-        "current_tick": game.tick,
+        "tick": game.tick,
         "status": game.status,
         "winner": game.winner,
         "your_faction": your_faction,
-        "your_cities": your_cities,
-        "all_cities": all_cities,
         "your_resources": your_resources,
-        "agents": [
-            {"agent_name": a.agent_name, "faction": a.faction} for a in agents
-        ],
-        "last_tick_events": last_events,
+        "your_cities": your_cities,
+        "known_cities": known_cities,
+        "public_events_last_tick": public_events,
+        "public_diplomacy_last_tick": diplomacy,
         "valid_actions": valid_actions,
     }
 
 
+def _classify_troops(troops: int) -> str:
+    """将精确兵力转为模糊估计。"""
+    if troops <= 300:
+        return "low"
+    elif troops <= 700:
+        return "medium"
+    else:
+        return "high"
+
+
 def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[dict]:
-    """计算当前势力所有合法动作（不考虑粮草上限，只列出可能选项）。"""
     own_cities = [c for c in cities if c.owner == your_faction]
     grain = resources.get("grain", 0)
     actions = []
 
-    # Attack: 自己的城 -> 邻接的非己方城
     for own in own_cities:
         if own.troops <= GARRISON_MIN:
             continue
@@ -219,7 +275,7 @@ def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[d
             nb = next((c for c in cities if c.name == nb_name), None)
             if nb and nb.owner != your_faction:
                 max_troops = own.troops - GARRISON_MIN
-                affordable = grain  # 每兵 1 粮草
+                affordable = grain
                 if affordable > 0:
                     actions.append({
                         "type": "attack",
@@ -228,11 +284,9 @@ def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[d
                         "max_troops": min(max_troops, affordable),
                     })
 
-    # Defend: 自己的任何城
     for c in own_cities:
         actions.append({"type": "defend", "target": c.name})
 
-    # Recruit: 自己的城
     max_recruit = min(MAX_RECRUIT_PER_CITY, grain // 2)
     if max_recruit > 0:
         for c in own_cities:
@@ -242,7 +296,6 @@ def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[d
                 "max_amount": max_recruit,
             })
 
-    # March: 自己邻接的己方城之间
     for own in own_cities:
         if own.troops <= GARRISON_MIN:
             continue
@@ -258,25 +311,27 @@ def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[d
                     "max_troops": max_troops,
                 })
 
-    # Diplomacy: 向其他势力喊话
     for f in FACTION_POOL:
         if f != your_faction:
-            actions.append({
-                "type": "diplomacy",
-                "target": f,
-            })
+            actions.append({"type": "diplomacy", "target": f})
 
     return actions
 
 
 # ═══════════════════════════════════════════════════════════════
-# 动作提交（支持多动作）
+# 动作提交（支持 public_speech，丢弃 private_thought）
 # ═══════════════════════════════════════════════════════════════
 
 def submit_actions(
     session: Session, game_id: int, agent: Agent, actions: list[dict],
+    public_speech: str = "",
 ):
-    """提交一组合法动作。扣除对应粮草，写入 Action 表。"""
+    """提交一组合法动作。
+
+    - actions: 动作列表
+    - public_speech: 可选公开发言（下回合所有人可见）
+    - private_thought: 不接受，如果传入会被丢弃
+    """
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
@@ -288,7 +343,6 @@ def submit_actions(
         session.add(game)
         session.commit()
 
-    # 检查本回合是否已提交过
     existing = session.exec(
         select(Action).where(
             Action.game_id == game_id,
@@ -299,7 +353,6 @@ def submit_actions(
     if existing:
         raise ValueError("本回合已提交过动作")
 
-    # 加载城池和资源
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
     city_map = {c.name: c for c in cities}
     resources = json.loads(game.resources) if game.resources else {}
@@ -319,7 +372,6 @@ def submit_actions(
             troops = act["troops"]
             if troops <= 0:
                 raise ValueError(f"attack 兵力必须 > 0: {troops}")
-            # 校验 from 城
             from_city = city_map.get(from_name)
             if not from_city or from_city.owner != agent.faction:
                 raise ValueError(f"出兵城 [{from_name}] 不归你控制")
@@ -328,10 +380,8 @@ def submit_actions(
                     f"出兵城 [{from_name}] 兵力不足（有 {from_city.troops}，"
                     f"需留守 {GARRISON_MIN}，最多出兵 {from_city.troops - GARRISON_MIN}）"
                 )
-            # 校验邻接
             if target not in CITY_ADJACENCY.get(from_name, []):
                 raise ValueError(f"[{from_name}] 和 [{target}] 不邻接，无法攻击")
-            # 校验 target 不是自己的城
             target_city = city_map.get(target)
             if target_city and target_city.owner == agent.faction:
                 raise ValueError(f"不能攻击自己的城 [{target}]")
@@ -342,7 +392,6 @@ def submit_actions(
             target_city = city_map.get(target)
             if not target_city or target_city.owner != agent.faction:
                 raise ValueError(f"防守目标 [{target}] 不归你控制")
-            # defend 不消耗粮草
 
         elif action_type == "recruit":
             target = act["target"]
@@ -375,7 +424,6 @@ def submit_actions(
                 )
             if to_name not in CITY_ADJACENCY.get(from_name, []):
                 raise ValueError(f"[{from_name}] 和 [{to_name}] 不邻接，无法行军")
-            # march 不消耗粮草
 
         elif action_type == "diplomacy":
             target = act["target"]
@@ -386,14 +434,12 @@ def submit_actions(
                 raise ValueError("不能对自己外交")
             if len(message) > 200:
                 raise ValueError(f"外交发言不能超过 200 字，当前 {len(message)} 字")
-            # diplomacy 不消耗粮草
 
         else:
             raise ValueError(f"未知动作类型: {action_type}")
 
         validated.append(act)
 
-    # ── 检查粮草 ──────────────────────────────────────────
     if total_grain_cost > grain:
         raise ValueError(
             f"粮草不足（需要 {total_grain_cost}，当前 {grain}）"
@@ -405,9 +451,8 @@ def submit_actions(
     game.resources = json.dumps(resources, ensure_ascii=False)
     session.add(game)
 
-    # ── 写入 Action 表 ────────────────────────────────────
+    # ── 写入 Action 表 + 公开外交 ─────────────────────────
     for act in validated:
-        # march 用 "to" 作为 target；其他类型用 "target"
         target = act.get("to") if act["type"] == "march" else act["target"]
         action = Action(
             game_id=game_id,
@@ -422,6 +467,31 @@ def submit_actions(
         )
         session.add(action)
 
+    # ── 存储 public_speech（下回合公开） ─────────────────
+    if public_speech and public_speech.strip():
+        diplomacy_key = f"pending_diplomacy_{game.tick}"
+        existing_diplomacy = {}
+        # Load existing pending diplomacy for this tick
+        # We store pending diplomacy on the game object temporarily
+        # Format: {"蜀→魏": "message", ...}
+        pass
+        # Store as a pending diplomacy action
+        # We'll use a convention: diplomacy actions with target faction
+        for other_faction in FACTION_POOL:
+            if other_faction != agent.faction:
+                action = Action(
+                    game_id=game_id,
+                    agent_id=agent.id,
+                    tick=game.tick,
+                    type="diplomacy",
+                    target=other_faction,
+                    from_city=None,
+                    troops=None,
+                    amount=None,
+                    message=public_speech.strip(),
+                )
+                session.add(action)
+
     session.commit()
     return {
         "msg": f"{len(validated)} 个动作已提交",
@@ -432,20 +502,18 @@ def submit_actions(
 
 
 # ═══════════════════════════════════════════════════════════════
-# Tick 推进 —— 战斗结算
+# Tick 推进 —— 战斗结算 + 双轨日志
 # ═══════════════════════════════════════════════════════════════
 
 def tick(session: Session, game_id: int):
     """执行一个回合。
 
-    流程：
-    1. 加载所有待处理的 attack/defend 动作
-    2. 按城池分组结算战斗（基于 tick 开始时的城池状态）
-    3. 执行 recruit（新兵入城）
-    4. 执行 march（调兵，在战斗后所以不参战）
-    5. 产出粮草
-    6. 记录事件
-    7. 检查胜利条件
+    1. 加载所有待处理动作
+    2. 按城池分组结算战斗
+    3. 执行招募 / 行军
+    4. 产出粮草
+    5. 生成 public_log（公开）和 private_log（调试用）
+    6. 检查胜利条件
     """
     game = session.get(Game, game_id)
     if game is None:
@@ -470,37 +538,37 @@ def tick(session: Session, game_id: int):
     agent_map = {a.id: a for a in agents}
     city_map = {c.name: c for c in cities}
 
-    # 战斗前城池状态快照
-    city_before: dict[str, tuple[str | None, int]] = {
-        c.name: (c.owner, c.troops) for c in cities
-    }
-
     # ── 1. 收集外交消息 ──────────────────────────────────────
     diplomacy_messages: list[dict] = []
     for a in actions:
         if a.type == "diplomacy":
             ag = agent_map.get(a.agent_id)
-            if ag:
-                diplomacy_messages.append({
-                    "from_faction": ag.faction,
-                    "to_faction": a.target,
-                    "message": a.message or "",
-                })
+            if ag and a.message:
+                # Check if we already recorded this agent's speech this tick
+                already = any(
+                    d["from_faction"] == ag.faction
+                    for d in diplomacy_messages
+                )
+                if not already:
+                    diplomacy_messages.append({
+                        "from_faction": ag.faction,
+                        "message": a.message,
+                    })
 
     # ── 2. 按城池分组，结算战斗 ────────────────────────────
-    # 只处理 attack / defend 动作
     combat_actions = [a for a in actions if a.type in ("attack", "defend")]
     cities_with_combat = set(a.target for a in combat_actions)
 
     combat_changes: dict[str, tuple[str | None, int]] = {}
     combat_events: list[dict] = []
+    # 记录详细的战斗数据用于 private_log
+    private_combat_detail: list[dict] = []
 
     for city_name in cities_with_combat:
         city = city_map[city_name]
         city_act = [a for a in combat_actions if a.target == city_name]
 
-        # 分离 attack 和 defend
-        attacks: list[tuple[Action, str, int]] = []  # (action, faction, troops_committed)
+        attacks: list[tuple[Action, str, int]] = []
         defended = False
 
         for a in city_act:
@@ -518,28 +586,27 @@ def tick(session: Session, game_id: int):
         if not attacks:
             continue
 
-        # 计算防守方力量
         defense_multiplier = 1.0
         if city.owner is not None and defended:
-            defense_multiplier += DEFEND_BONUS_MULTIPLIER  # 1.0 + 0.5 = 1.5
-        # 中立城无防守加成
+            defense_multiplier += DEFEND_BONUS_MULTIPLIER
         if city.owner is None:
             defense_multiplier = 1.0
 
         defense_power = city.troops * defense_multiplier
 
-        # 按势力聚合进攻兵力
         faction_attack: dict[str, int] = defaultdict(int)
         for _, faction, troops in attacks:
             faction_attack[faction] += troops
 
         total_attack = sum(faction_attack.values())
-
-        # 按攻击力从高到低排序
         sorted_attackers = sorted(faction_attack.items(), key=lambda x: x[1], reverse=True)
         best_attacker_faction, best_attack_power = sorted_attackers[0]
 
-        event = {
+        # 公开事件摘要
+        public_event = {"city": city_name}
+
+        # 详细战斗数据（仅用于 private_log）
+        detail = {
             "city": city_name,
             "defender": city.owner,
             "defense_power": round(defense_power, 1),
@@ -548,61 +615,51 @@ def tick(session: Session, game_id: int):
                 {"faction": f, "troops_committed": t}
                 for f, t in sorted_attackers
             ],
-            "result": "",
-            "new_owner": None,
-            "troops_remaining": 0,
+            "actions": [
+                {"faction": ag.faction, "type": a.type, "agent_name": ag.agent_name}
+                for a in city_act
+                if (ag := agent_map.get(a.agent_id))
+            ],
         }
 
         if total_attack > defense_power:
-            # ── 进攻方胜 ──────────────────────────────────
-            # 最强攻击者获得城池
             winner_faction = best_attacker_faction
-
-            # 各方兵力损失
             troop_losses: dict[str, int] = {}
             for faction, committed in faction_attack.items():
                 if faction == winner_faction:
-                    # 获胜方损失 30%
                     loss = math.ceil(committed * ATTACKER_WIN_LOSS)
                     remaining = committed - loss
                 else:
-                    # 其他进攻方损失 50%
                     loss = math.ceil(committed * DEFENDER_LOSE_LOSS)
                     remaining = committed - loss
                 troop_losses[faction] = remaining
 
-            # 守方兵力清零
             new_troops = max(troop_losses[winner_faction], 100)
-
             combat_changes[city_name] = (winner_faction, new_troops)
 
-            event["result"] = "captured"
-            event["new_owner"] = winner_faction
-            event["troops_remaining"] = new_troops
-            event["winner"] = winner_faction
-            event["troop_losses"] = troop_losses
+            public_event["result"] = "captured"
+            public_event["captured_by"] = winner_faction
+            public_event["from"] = city.owner or "中立"
 
+            detail["result"] = "captured"
+            detail["new_owner"] = winner_faction
+            detail["troops_remaining"] = new_troops
+            detail["troop_losses"] = troop_losses
         else:
-            # ── 防守方胜 ──────────────────────────────────
-            # 所有进攻方损失 100%
-            # 守方损失 30%
             new_troops = max(math.floor(city.troops * (1 - DEFENDER_LOSE_LOSS)), 100)
-
             combat_changes[city_name] = (city.owner, new_troops)
 
-            event["result"] = "defended"
-            event["new_owner"] = city.owner
-            event["troops_remaining"] = new_troops
-            event["attacker_loss"] = "100%"
+            defender_name = city.owner or "中立"
+            public_event["result"] = "defended"
+            public_event["defended_by"] = defender_name
 
-        # 记录各方参与的动作类型
-        event["actions"] = [
-            {"faction": ag.faction, "type": a.type, "agent_name": ag.agent_name}
-            for a in city_act
-            if (ag := agent_map.get(a.agent_id))
-        ]
+            detail["result"] = "defended"
+            detail["new_owner"] = city.owner
+            detail["troops_remaining"] = new_troops
+            detail["attacker_loss"] = "100%"
 
-        combat_events.append(event)
+        combat_events.append(public_event)
+        private_combat_detail.append(detail)
 
     # ── 应用战斗结果 ──────────────────────────────────────
     for city_name, (owner, troops) in combat_changes.items():
@@ -611,7 +668,7 @@ def tick(session: Session, game_id: int):
         c.troops = troops
         session.add(c)
 
-    # ── 3. 执行招募（战斗后，新兵入城） ──────────────────
+    # ── 3. 招募（战斗后） ─────────────────────────────────
     recruit_actions = [a for a in actions if a.type == "recruit"]
     for a in recruit_actions:
         ag = agent_map.get(a.agent_id)
@@ -622,15 +679,15 @@ def tick(session: Session, game_id: int):
             amount = a.amount or 0
             target_city.troops += amount
             session.add(target_city)
-            combat_events.append({
-                "city": a.target,
+            private_combat_detail.append({
                 "event_type": "recruit",
+                "city": a.target,
                 "faction": ag.faction,
                 "amount": amount,
                 "new_troops": target_city.troops,
             })
 
-    # ── 4. 执行行军（战斗后，调兵不参战） ────────────────
+    # ── 4. 行军（战斗后） ─────────────────────────────────
     march_actions = [a for a in actions if a.type == "march"]
     for a in march_actions:
         ag = agent_map.get(a.agent_id)
@@ -640,14 +697,13 @@ def tick(session: Session, game_id: int):
         to_city = city_map.get(a.target)
         troops_to_move = a.troops or 0
         if from_city and to_city and from_city.owner == ag.faction and to_city.owner == ag.faction:
-            # 检查出发城仍有足够兵力（可能已被战斗消耗）
             actual_move = min(troops_to_move, from_city.troops - GARRISON_MIN)
             if actual_move > 0:
                 from_city.troops -= actual_move
                 to_city.troops += actual_move
                 session.add(from_city)
                 session.add(to_city)
-                combat_events.append({
+                private_combat_detail.append({
                     "event_type": "march",
                     "from": a.from_city,
                     "to": a.target,
@@ -666,38 +722,19 @@ def tick(session: Session, game_id: int):
 
     game.resources = json.dumps(resources, ensure_ascii=False)
 
-    # ── 6. 记录公开事件 ──────────────────────────────────
-    public_events = []
-    # 战斗结果
-    for ev in combat_events:
-        if ev.get("result") in ("captured", "defended"):
-            public_events.append({
-                "type": "battle",
-                "city": ev["city"],
-                "result": ev["result"],
-                "new_owner": ev.get("new_owner"),
-                "troops_remaining": ev.get("troops_remaining"),
-            })
-        elif ev.get("event_type") == "recruit":
-            public_events.append({
-                "type": "recruit",
-                "city": ev["city"],
-                "faction": ev["faction"],
-            })
-        elif ev.get("event_type") == "march":
-            public_events.append({
-                "type": "march",
-                "from": ev["from"],
-                "to": ev["to"],
-                "faction": ev["faction"],
-            })
+    # ── 6. 保存公开/私有事件 ──────────────────────────────
+    game.last_tick_events = json.dumps(combat_events, ensure_ascii=False)
+    game.last_tick_diplomacy = json.dumps(diplomacy_messages, ensure_ascii=False)
 
     game.tick += 1
-    game.last_tick_events = json.dumps(public_events, ensure_ascii=False)
     session.add(game)
     session.commit()
 
-    # ── 7. 检查胜利条件 ──────────────────────────────────
+    # ── 7. 写入双轨日志文件 ───────────────────────────────
+    _write_logs(game_id, game.tick, combat_events, diplomacy_messages,
+                private_combat_detail, actions, agent_map, city_map)
+
+    # ── 8. 检查胜利条件 ──────────────────────────────────
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
     active_owners = {c.owner for c in cities if c.owner is not None}
     if len(active_owners) == 1:
@@ -713,6 +750,69 @@ def tick(session: Session, game_id: int):
         "cities": [
             {"name": c.name, "owner": c.owner, "troops": c.troops} for c in cities
         ],
-        "events": public_events,
+        "events": combat_events,
         "diplomacy": diplomacy_messages,
     }
+
+
+def _write_logs(
+    game_id: int,
+    tick: int,
+    public_events: list[dict],
+    diplomacy: list[dict],
+    private_detail: list[dict],
+    actions: list[Action],
+    agent_map: dict[int, Agent],
+    city_map: dict[str, City],
+):
+    """写入双轨日志文件。"""
+    PUBLIC_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    PRIVATE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now(timezone.utc).isoformat()
+
+    # ── public_log: 只含战斗结果、城池易主、外交 ─────────
+    pub_entry = {
+        "timestamp": ts,
+        "game_id": game_id,
+        "tick": tick,
+        "events": public_events,
+        "diplomacy": diplomacy,
+        "cities": [
+            {"name": c.name, "owner": c.owner or "中立"}
+            for c in city_map.values()
+        ],
+    }
+    pub_path = PUBLIC_LOG_DIR / f"{game_id}.jsonl"
+    with open(pub_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(pub_entry, ensure_ascii=False) + "\n")
+
+    # ── private_log: 含所有 agent 提交的 actions、详细内部状态 ──
+    priv_actions = []
+    for a in actions:
+        ag = agent_map.get(a.agent_id)
+        priv_actions.append({
+            "agent_name": ag.agent_name if ag else "?",
+            "faction": ag.faction if ag else "?",
+            "type": a.type,
+            "target": a.target,
+            "from_city": a.from_city,
+            "troops": a.troops,
+            "amount": a.amount,
+            "message": a.message,
+        })
+
+    priv_entry = {
+        "timestamp": ts,
+        "game_id": game_id,
+        "tick": tick,
+        "combat_detail": private_detail,
+        "agent_actions": priv_actions,
+        "cities_before_tick": [
+            {"name": c.name, "owner": c.owner or "中立", "troops": c.troops}
+            for c in city_map.values()
+        ],
+    }
+    priv_path = PRIVATE_LOG_DIR / f"{game_id}.jsonl"
+    with open(priv_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(priv_entry, ensure_ascii=False) + "\n")

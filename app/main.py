@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlmodel import Session, select
 
 from .database import init_db, get_session
@@ -82,19 +82,44 @@ def get_state(
 
 # ── POST /games/{game_id}/actions ──────────────────────────
 @app.post("/games/{game_id}/actions")
-def submit_actions(
+async def submit_actions(
     game_id: int,
+    request: Request,
     token: str,
-    body: dict,
     session: Session = Depends(get_session),
 ):
-    """提交本回合的动作列表（支持多动作）。"""
+    """提交本回合的动作列表。
+
+    body 格式:
+    {
+      "actions": [...],
+      "public_speech": "可选公开发言",
+      "private_thought": "会被服务端丢弃，不上传"
+    }
+
+    - private_thought: 服务端不接受此字段，传入即丢弃
+    - public_speech: 可选，下回合所有 agent 可见
+    """
     agent = _auth(session, game_id, token)
+
+    # FastAPI 限制：Depends 和 Body 不能在同一路径用，手动读取
+    body = await request.json()
+
+    # 显式丢弃 private_thought（核心隐私设计：server 不存）
+    if "private_thought" in body:
+        del body["private_thought"]
+
     actions = body.get("actions", [])
     if not actions:
         raise HTTPException(status_code=400, detail="actions 不能为空")
+
+    public_speech = body.get("public_speech", "") or ""
+
     try:
-        return eng.submit_actions(session, game_id, agent, actions)
+        return eng.submit_actions(
+            session, game_id, agent, actions,
+            public_speech=public_speech,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

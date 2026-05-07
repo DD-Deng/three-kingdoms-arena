@@ -52,7 +52,8 @@ class Game(SQLModel, table=True):
     tick: int = Field(default=0)
     status: str = Field(default="waiting")  # waiting | active | finished
     winner: Optional[str] = Field(default=None)
-    last_tick_events: Optional[str] = Field(default=None)  # JSON string
+    last_tick_events: Optional[str] = Field(default=None)  # JSON: public events (sanitized)
+    last_tick_diplomacy: Optional[str] = Field(default=None)  # JSON: public diplomacy messages
     resources: Optional[str] = Field(default=None)  # JSON: {"蜀":{"grain":500},...}
 
 
