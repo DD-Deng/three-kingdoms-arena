@@ -348,6 +348,14 @@ class LLMAgent:
                         break
 
                 if all_legal:
+                    # ── 客户端粮草校验 ──────────────────────────
+                    grain = state.get("your_resources", {}).get("grain", 0)
+                    actions, skipped = self._clip_by_grain(actions, grain)
+                    if skipped:
+                        self.console.print(
+                            f"[yellow]⚠ 粮草不足，跳过 {skipped} 个超预算动作[/]"
+                        )
+
                     self._log_llm(system_prompt, user_prompt, raw_response, error=None)
 
                     # 显示内心独白
@@ -413,22 +421,86 @@ class LLMAgent:
             "actions": result["actions"],
             "public_speech": result.get("public_speech", ""),
         }
-        resp = self._post(
-            f"/games/{self.game_id}/actions",
-            json_data=body,
-            params={"token": self.token},
-        )
-        self.console.print(
-            f"[bold {self.faction_colors.get(self.faction, 'white')}]"
-            f"⚡ {self.name} 提交 {len(result['actions'])} 个动作 "
-            f"(消耗 {resp.get('grain_cost', 0)} 粮草)[/]"
-        )
+        try:
+            resp = self._post(
+                f"/games/{self.game_id}/actions",
+                json_data=body,
+                params={"token": self.token},
+            )
+            self.console.print(
+                f"[bold {self.faction_colors.get(self.faction, 'white')}]"
+                f"⚡ {self.name} 提交 {len(result['actions'])} 个动作 "
+                f"(消耗 {resp.get('grain_cost', 0)} 粮草)[/]"
+            )
+        except RuntimeError as e:
+            self.console.print(
+                f"[red]❌ 提交失败: {e}[/]"
+            )
+            # Don't crash — skip this tick and try again next round
 
     # ── Prompt 构建 ───────────────────────────────────────────
 
     def _build_prompt(self, state: dict) -> tuple[str, str]:
         from agents.prompts import build_prompt  # noqa: F811
         return build_prompt(self.persona, state)
+
+    # ── 粮草裁剪 ───────────────────────────────────────────────
+
+    @staticmethod
+    def _clip_by_grain(actions: list[dict], grain: int) -> tuple[list[dict], int]:
+        """按粮草预算裁剪动作。优先保留 attack > recruit > defend > march > diplomacy。"""
+        cost_map = {"attack": 1, "recruit": 2, "defend": 0, "march": 0, "diplomacy": 0}
+        # 计算每个动作的粮草消耗
+        priced = []
+        for act in actions:
+            atype = act.get("type", "")
+            unit_cost = cost_map.get(atype, 0)
+            if atype == "attack":
+                troops = act.get("troops", 0)
+                cost = troops * unit_cost
+            elif atype == "recruit":
+                amount = act.get("amount", 0)
+                cost = amount * unit_cost
+            else:
+                cost = 0
+            priority = {"attack": 0, "recruit": 1, "defend": 2, "march": 3, "diplomacy": 4}
+            priced.append((priority.get(atype, 5), cost, act))
+
+        priced.sort(key=lambda x: x[0])
+        kept = []
+        spent = 0
+        skipped = 0
+        for _, cost, act in priced:
+            if cost == 0:
+                kept.append(act)
+            elif spent + cost <= grain:
+                kept.append(act)
+                spent += cost
+            elif cost > 0:
+                # 尝试缩减兵力（attack）或招募量（recruit）
+                atype = act.get("type", "")
+                if atype == "attack" and grain - spent > 0:
+                    affordable_troops = grain - spent
+                    if affordable_troops > 0:
+                        act = dict(act)
+                        act["troops"] = affordable_troops
+                        kept.append(act)
+                        spent += affordable_troops
+                    else:
+                        skipped += 1
+                elif atype == "recruit" and grain - spent >= 2:
+                    affordable_amount = (grain - spent) // 2
+                    if affordable_amount > 0:
+                        act = dict(act)
+                        act["amount"] = affordable_amount
+                        kept.append(act)
+                        spent += affordable_amount * 2
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+
+        return kept, skipped
 
     # ── 日志 ───────────────────────────────────────────────────
 
