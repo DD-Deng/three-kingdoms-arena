@@ -25,14 +25,29 @@ def _auth(session: Session, game_id: int, token: str) -> Agent:
     return agent
 
 
-# ── POST /games ──────────────────────────────────────────────
+# ── POST /agents/register ──────────────────────────────────
+@app.post("/agents/register")
+def register_agent(body: dict, session: Session = Depends(get_session)):
+    try:
+        result = eng.register_agent(
+            session,
+            player_id=body.get("player_id"),
+            agent_name=body["agent_name"],
+            version=body.get("version", "v1"),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+# ── POST /games ────────────────────────────────────────────
 @app.post("/games")
 def create_game(session: Session = Depends(get_session)):
     gid = eng.create_game(session)
     return {"game_id": gid}
 
 
-# ── POST /games/{game_id}/join ───────────────────────────────
+# ── POST /games/{game_id}/join ─────────────────────────────
 @app.post("/games/{game_id}/join")
 def join_game(
     game_id: int,
@@ -42,15 +57,16 @@ def join_game(
     try:
         token = eng.join_game(
             session, game_id,
-            agent_name=body["agent_name"],
+            agent_id=body["agent_id"],
+            secret=body["secret"],
             faction=body["faction"],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"token": token}
+    return {"token": token, "expires_at": None}
 
 
-# ── GET /games/{game_id}/state ──────────────────────────────
+# ── GET /games/{game_id}/state ─────────────────────────────
 @app.get("/games/{game_id}/state")
 def get_state(
     game_id: int,
@@ -64,7 +80,7 @@ def get_state(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-# ── POST /games/{game_id}/action ─────────────────────────────
+# ── POST /games/{game_id}/action ───────────────────────────
 @app.post("/games/{game_id}/action")
 def submit_action(
     game_id: int,
@@ -78,12 +94,16 @@ def submit_action(
             session, game_id, agent,
             action_type=body["type"],
             target=body["target"],
+            from_city=body.get("from"),
+            troops=body.get("troops"),
+            amount=body.get("amount"),
+            message=body.get("message"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ── POST /games/{game_id}/tick ───────────────────────────────
+# ── POST /games/{game_id}/tick ─────────────────────────────
 @app.post("/games/{game_id}/tick")
 def tick_game(
     game_id: int,

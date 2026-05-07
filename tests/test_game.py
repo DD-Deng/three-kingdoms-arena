@@ -12,23 +12,185 @@ def setup():
     init_db()
 
 
-# ── 测试 1: 创建 → 加入 → 动作 → tick → 验证状态变更 ──────
-def test_create_join_action_tick():
-    setup()
+# ═══════════════════════════════════════════════════════════════
+# Step 1 测试
+# ═══════════════════════════════════════════════════════════════
 
-    # 创建
-    r = client.post("/games")
+# ── 测试 1: agent 注册接口可用 ──────────────────────────────
+
+def test_agent_register():
+    setup()
+    r = client.post("/agents/register", json={
+        "agent_name": "刘备",
+        "version": "v1",
+    })
     assert r.status_code == 200
+    data = r.json()
+    assert "agent_id" in data
+    assert len(data["agent_id"]) == 32  # UUID hex
+    assert "secret" in data
+    assert len(data["secret"]) == 64  # token_hex(32)
+    assert "player_id" in data
+
+    # 用已有 player_id 再注册第二个 agent
+    r2 = client.post("/agents/register", json={
+        "player_id": data["player_id"],
+        "agent_name": "曹操",
+    })
+    assert r2.status_code == 200
+    assert r2.json()["player_id"] == data["player_id"]
+
+
+# ── 测试 2: join 必须带 agent_id + secret ───────────────────
+
+def test_join_requires_agent_credentials():
+    setup()
+    # 先注册一个 agent
+    r = client.post("/agents/register", json={"agent_name": "刘备"})
+    reg = r.json()
+
+    # 创建对局
+    r = client.post("/games")
     gid = r.json()["game_id"]
 
-    # 2 个势力加入 (只用蜀和魏，避免三方对称僵局)
-    r = client.post(f"/games/{gid}/join", json={"agent_name": "刘备", "faction": "蜀"})
+    # 正确 join
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": reg["agent_id"],
+        "secret": reg["secret"],
+        "faction": "蜀",
+    })
     assert r.status_code == 200
+    assert "token" in r.json()
+
+    # 错误 secret 被拒
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": reg["agent_id"],
+        "secret": "wrong-secret",
+        "faction": "魏",
+    })
+    assert r.status_code == 400
+    assert "secret" in r.json()["detail"]
+
+    # 未注册的 agent_id 被拒
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": "nonexistent",
+        "secret": "whatever",
+        "faction": "魏",
+    })
+    assert r.status_code == 400
+
+
+# ── 测试 3: 7 座城 + 邻接关系正确加载 ──────────────────────
+
+def test_seven_cities_and_adjacency():
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+
+    # 注册并加入
+    r = client.post("/agents/register", json={"agent_name": "刘备"})
+    reg = r.json()
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": reg["agent_id"],
+        "secret": reg["secret"],
+        "faction": "蜀",
+    })
+    token = r.json()["token"]
+
+    r = client.get(f"/games/{gid}/state", params={"token": token})
+    state = r.json()
+
+    # 检查 7 座城
+    assert len(state["all_cities"]) == 7
+    city_names = {c["name"] for c in state["all_cities"]}
+    assert city_names == {"洛阳", "长安", "邺城", "宛城", "襄阳", "成都", "建业"}
+
+    # 检查初始归属
+    city_owners = {c["name"]: c["owner"] for c in state["all_cities"]}
+    assert city_owners["洛阳"] == "魏"
+    assert city_owners["长安"] == "魏"
+    assert city_owners["邺城"] == "魏"
+    assert city_owners["成都"] == "蜀"
+    assert city_owners["建业"] == "吴"
+    assert city_owners["宛城"] is None  # 中立
+    assert city_owners["襄阳"] is None  # 中立
+
+    # 中立城兵力应为 500
+    for c in state["all_cities"]:
+        if c["name"] in ("宛城", "襄阳"):
+            assert c["troops"] == 500
+
+    # 检查邻接关系（通过 valid_actions 验证）
+    # 蜀只有成都，成都只邻接襄阳
+    valid_actions = state["valid_actions"]
+    attack_targets = [a["target"] for a in valid_actions if a["type"] == "attack"]
+    assert "襄阳" in attack_targets  # 成都->襄阳 邻接
+    # 成都不能攻击洛阳（不邻接）
+    assert "洛阳" not in attack_targets
+
+
+# ── 测试 4: 粮草随回合增长 ─────────────────────────────────
+
+def test_grain_increases_per_tick():
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+
+    # 注册并加入蜀
+    r = client.post("/agents/register", json={"agent_name": "刘备"})
+    reg_shu = r.json()
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": reg_shu["agent_id"],
+        "secret": reg_shu["secret"],
+        "faction": "蜀",
+    })
     token_shu = r.json()["token"]
 
-    r = client.post(f"/games/{gid}/join", json={"agent_name": "曹操", "faction": "魏"})
-    assert r.status_code == 200
-    token_wei = r.json()["token"]
+    # 加入魏
+    r = client.post("/agents/register", json={"agent_name": "曹操"})
+    reg_wei = r.json()
+    client.post(f"/games/{gid}/join", json={
+        "agent_id": reg_wei["agent_id"],
+        "secret": reg_wei["secret"],
+        "faction": "魏",
+    })
+
+    # 初始粮草
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    assert r.json()["your_resources"]["grain"] == 500
+
+    # 推进 3 个 tick（蜀只有 1 城，魏有 3 城）
+    for _ in range(3):
+        client.post(f"/games/{gid}/tick")
+
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    # 蜀每 tick 产 100 粮草（1 城）, 3 ticks = +300
+    assert r.json()["your_resources"]["grain"] == 800
+
+
+# ═══════════════════════════════════════════════════════════════
+# 保留旧测试（适配新接口）
+# ═══════════════════════════════════════════════════════════════
+
+def _register_and_join(faction: str, name: str, game_id: int) -> str:
+    """辅助函数：注册 agent 并加入对局。"""
+    r = client.post("/agents/register", json={"agent_name": name})
+    reg = r.json()
+    r = client.post(f"/games/{game_id}/join", json={
+        "agent_id": reg["agent_id"],
+        "secret": reg["secret"],
+        "faction": faction,
+    })
+    return r.json()["token"]
+
+
+def test_create_join_action_tick():
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    token_wei = _register_and_join("魏", "曹操", gid)
 
     # 查看初始状态
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
@@ -39,60 +201,51 @@ def test_create_join_action_tick():
     assert state["your_faction"] == "蜀"
     assert len(state["your_cities"]) == 1
     assert state["your_cities"][0]["name"] == "成都"
-    assert state["your_cities"][0]["troops"] == 1000
-    assert len(state["all_cities"]) == 3
-    # 有效动作: 可以攻击洛阳(魏)、建业(无主不算 enemy)，防御成都
-    action_types = {a["type"] for a in state["valid_actions"]}
-    assert "attack" in action_types
-    assert "defend" in action_types
-    # 成都归蜀，洛阳归魏，建业无主
-    city_owners = {c["name"]: c["owner"] for c in state["all_cities"]}
-    assert city_owners["成都"] == "蜀"
-    assert city_owners["洛阳"] == "魏"
-    assert city_owners["建业"] is None
 
-    # 蜀攻击魏的洛阳
+    # 蜀攻击襄阳（中立城，邻接成都）
     r = client.post(
         f"/games/{gid}/action",
         params={"token": token_shu},
-        json={"type": "attack", "target": "洛阳"},
+        json={"type": "attack", "target": "襄阳"},
     )
     assert r.status_code == 200
 
-    # 魏不动作，直接推进
     r = client.post(f"/games/{gid}/tick")
     assert r.status_code == 200
     result = r.json()
     assert result["tick"] == 1
 
-    # 洛阳应该被蜀攻陷 (1000 vs 1000, 攻击方优势 +200)
+    # 襄阳应被蜀攻陷（蜀 800-1200 兵 vs 中立 500 兵，攻击方优势 +200）
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    luoyang = [c for c in state["all_cities"] if c["name"] == "洛阳"][0]
-    assert luoyang["owner"] == "蜀"
-    # 验证 last_tick_events 不为空
+    xiangyang = [c for c in state["all_cities"] if c["name"] == "襄阳"][0]
+    assert xiangyang["owner"] == "蜀"
     assert len(state["last_tick_events"]) > 0
 
 
-# ── 测试 2: 无效 token 被拒 ──────────────────────────────────
 def test_bad_token():
     setup()
     r = client.post("/games")
     gid = r.json()["game_id"]
-
-    client.post(f"/games/{gid}/join", json={"agent_name": "刘备", "faction": "蜀"})
+    _register_and_join("蜀", "刘备", gid)
 
     r = client.get(f"/games/{gid}/state", params={"token": "wrong-token"})
     assert r.status_code == 401
 
 
-# ── 测试 3: 同势力重复加入被拒 ──────────────────────────────
 def test_duplicate_faction():
     setup()
     r = client.post("/games")
     gid = r.json()["game_id"]
+    _register_and_join("蜀", "刘备", gid)
 
-    client.post(f"/games/{gid}/join", json={"agent_name": "刘备", "faction": "蜀"})
-    r = client.post(f"/games/{gid}/join", json={"agent_name": "刘禅", "faction": "蜀"})
+    # 再用同一势力 join 应被拒
+    r2 = client.post("/agents/register", json={"agent_name": "刘禅"})
+    reg2 = r2.json()
+    r = client.post(f"/games/{gid}/join", json={
+        "agent_id": reg2["agent_id"],
+        "secret": reg2["secret"],
+        "faction": "蜀",
+    })
     assert r.status_code == 400
     assert "已被占用" in r.json()["detail"]
