@@ -80,25 +80,21 @@ def get_state(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-# ── POST /games/{game_id}/action ───────────────────────────
-@app.post("/games/{game_id}/action")
-def submit_action(
+# ── POST /games/{game_id}/actions ──────────────────────────
+@app.post("/games/{game_id}/actions")
+def submit_actions(
     game_id: int,
     token: str,
     body: dict,
     session: Session = Depends(get_session),
 ):
+    """提交本回合的动作列表（支持多动作）。"""
     agent = _auth(session, game_id, token)
+    actions = body.get("actions", [])
+    if not actions:
+        raise HTTPException(status_code=400, detail="actions 不能为空")
     try:
-        return eng.submit_action(
-            session, game_id, agent,
-            action_type=body["type"],
-            target=body["target"],
-            from_city=body.get("from"),
-            troops=body.get("troops"),
-            amount=body.get("amount"),
-            message=body.get("message"),
-        )
+        return eng.submit_actions(session, game_id, agent, actions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
