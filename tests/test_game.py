@@ -116,10 +116,12 @@ def test_seven_cities_and_adjacency():
     all_names = {c["name"] for c in state["known_cities"]} | {c["name"] for c in state["your_cities"]}
     assert all_names == {"洛阳", "长安", "邺城", "宛城", "襄阳", "成都", "建业"}
 
+    # 蜀有成都+长安，可以通过长安→洛阳、长安→宛城、成都→襄阳攻击
     valid_actions = state["valid_actions"]
     attack_targets = [a["target"] for a in valid_actions if a["type"] == "attack"]
-    assert "襄阳" in attack_targets
-    assert "洛阳" not in attack_targets
+    assert "襄阳" in attack_targets  # 成都→襄阳 (吴)
+    assert "宛城" in attack_targets   # 长安→宛城 (中立)
+    assert "洛阳" in attack_targets   # 长安→洛阳 (魏) — 新增蜀道邻接
 
 
 def test_grain_increases_per_tick():
@@ -130,13 +132,14 @@ def test_grain_increases_per_tick():
     _register_and_join("魏", "曹操", gid)
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
-    assert r.json()["your_resources"]["grain"] == 500
+    assert r.json()["your_resources"]["grain"] == 500  # 蜀初始 500
 
     for _ in range(3):
         client.post(f"/games/{gid}/tick")
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
-    assert r.json()["your_resources"]["grain"] == 800
+    # 蜀 2 城 × 80 × 3 ticks = 480 收入
+    assert r.json()["your_resources"]["grain"] == 980
 
 
 def test_create_join_action_tick():
@@ -149,8 +152,9 @@ def test_create_join_action_tick():
     for _ in range(3):
         _tick(gid)
 
+    # 攻宛城（中立 600 兵）: 从长安出兵 650
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 550},
+        {"type": "attack", "from": "长安", "target": "宛城", "troops": 650},
     ])
     assert r.status_code == 200
 
@@ -159,9 +163,9 @@ def test_create_join_action_tick():
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    # 襄阳被攻占后应出现在 your_cities 而非 known_cities
+    # 宛城被攻占后应出现在 your_cities 而非 known_cities
     your_names = {c["name"] for c in state["your_cities"]}
-    assert "襄阳" in your_names
+    assert "宛城" in your_names
 
 
 def test_bad_token():
@@ -202,8 +206,9 @@ def test_single_attack_success():
     for _ in range(3):
         _tick(gid)
 
+    # 攻宛城（中立 600 兵）: 从长安出兵 650
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 550},
+        {"type": "attack", "from": "长安", "target": "宛城", "troops": 650},
     ])
     assert r.status_code == 200
 
@@ -212,9 +217,8 @@ def test_single_attack_success():
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    # 襄阳 should be in your_cities now
     your_names = {c["name"] for c in state["your_cities"]}
-    assert "襄阳" in your_names
+    assert "宛城" in your_names
 
     events = state["public_events_last_tick"]
     battle = [e for e in events if e.get("result")][0] if events else None
@@ -231,15 +235,15 @@ def test_single_attack_failure():
         _tick(gid)
 
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 20},
+        {"type": "attack", "from": "长安", "target": "宛城", "troops": 20},
     ])
     assert r.status_code == 200
 
     r = _tick(gid)
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    xiangyang = [c for c in state["known_cities"] if c["name"] == "襄阳"][0]
-    assert xiangyang["owner"] == "中立"  # 20 vs 500，失败
+    wancheng = [c for c in state["known_cities"] if c["name"] == "宛城"]
+    assert wancheng[0]["owner"] == "中立"  # 20 vs 600，失败
 
 
 def test_multi_attack_strongest_wins():
@@ -252,19 +256,15 @@ def test_multi_attack_strongest_wins():
     for _ in range(4):
         _tick(gid)
 
-    r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 550},
-    ])
-    _tick(gid)
-    _tick(gid)
-
+    # 魏攻宛城（中立 600）
     r = _submit(token_wei, gid, [
-        {"type": "attack", "from": "洛阳", "target": "宛城", "troops": 400},
+        {"type": "attack", "from": "洛阳", "target": "宛城", "troops": 500},
     ])
     assert r.status_code == 200
 
+    # 蜀同时攻宛城
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "襄阳", "target": "宛城", "troops": 150},
+        {"type": "attack", "from": "长安", "target": "宛城", "troops": 200},
     ])
     assert r.status_code == 200
 
@@ -273,7 +273,7 @@ def test_multi_attack_strongest_wins():
     state = r.json()
     wancheng = [c for c in state["known_cities"] if c["name"] == "宛城"]
     if wancheng:
-        # 400 > 150，魏应得城
+        # 500+200=700 > 600 中立防守，500 > 200 魏得城
         assert wancheng[0]["owner"] == "魏"
 
 
@@ -286,15 +286,16 @@ def test_attack_neutral_city():
     for _ in range(2):
         _tick(gid)
 
+    # 攻宛城（唯一中立城，600 兵）
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 510},
+        {"type": "attack", "from": "长安", "target": "宛城", "troops": 650},
     ])
     _tick(gid)
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
     your_names = {c["name"] for c in state["your_cities"]}
-    assert "襄阳" in your_names  # 510 > 500
+    assert "宛城" in your_names  # 650 > 600
 
 
 def test_adjacency_restriction():
@@ -339,13 +340,9 @@ def test_march_between_own_cities():
     for _ in range(3):
         _tick(gid)
 
+    # 长安↔成都 邻接（蜀道），可直接行军
     r = _submit(token_shu, gid, [
-        {"type": "attack", "from": "成都", "target": "襄阳", "troops": 550},
-    ])
-    _tick(gid)
-
-    r = _submit(token_shu, gid, [
-        {"type": "march", "from": "成都", "to": "襄阳", "troops": 200},
+        {"type": "march", "from": "成都", "to": "长安", "troops": 200},
     ])
     assert r.status_code == 200
     assert r.json()["grain_cost"] == 0
@@ -353,7 +350,10 @@ def test_march_between_own_cities():
     _tick(gid)
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
-    assert len(state["your_cities"]) >= 2
+    assert len(state["your_cities"]) == 2
+    # 长安兵力应增加
+    changan = [c for c in state["your_cities"] if c["name"] == "长安"][0]
+    assert changan["troops"] >= 900  # 原 800 + 200
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -386,17 +386,17 @@ def test_shu_cannot_see_wei_exact_troops():
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     state = r.json()
 
-    # 蜀只有成都，邻接襄阳（中立），远处有洛阳（魏）
-    # 洛阳不邻接成都 → 应只显示模糊估计
-    luoyang = [c for c in state["known_cities"] if c["name"] == "洛阳"][0]
-    assert "troops_estimate" in luoyang  # 模糊估计
-    assert "troops" not in luoyang       # 不应有精确兵力
-    assert luoyang["info_freshness"] == "rumor"
+    # 蜀有成都+长安，邻接洛阳（魏）、襄阳（吴）、宛城（中立）
+    # 邺城是魏的城，但不与蜀邻接 → 应只显示模糊估计
+    yecheng = [c for c in state["known_cities"] if c["name"] == "邺城"][0]
+    assert "troops_estimate" in yecheng  # 模糊估计
+    assert "troops" not in yecheng       # 不应有精确兵力
+    assert yecheng["info_freshness"] == "rumor"
 
-    # 襄阳邻接成都 → 应有精确兵力
-    xiangyang = [c for c in state["known_cities"] if c["name"] == "襄阳"][0]
-    assert "troops" in xiangyang
-    assert xiangyang["info_freshness"] == "current"
+    # 洛阳邻接长安 → 应有精确兵力（虽然属魏）
+    luoyang = [c for c in state["known_cities"] if c["name"] == "洛阳"][0]
+    assert "troops" in luoyang
+    assert luoyang["info_freshness"] == "current"
 
 
 def test_shu_cannot_see_any_private_thought():
@@ -465,3 +465,121 @@ def test_public_log_exists():
 
     assert "agent_actions" not in pub_entry
     assert "agent_actions" in priv_entry
+
+
+# ═══════════════════════════════════════════════════════════════
+# Step 1 新增测试 —— 初始配置、邻接、借粮
+# ═══════════════════════════════════════════════════════════════
+
+def test_initial_setup_cities():
+    """验证新的三方各2城 + 宛城中立开局。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+
+    # 用蜀 token 读取全图 city 数据（取巧：通过 public log）
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    _register_and_join("魏", "曹操", gid)
+    _register_and_join("吴", "孙权", gid)
+
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+
+    assert len(state["your_cities"]) == 2  # 成都 + 长安
+    your_names = {c["name"] for c in state["your_cities"]}
+    assert your_names == {"成都", "长安"}
+
+    # 蜀起手粮 500
+    assert state["your_resources"]["grain"] == 500
+
+    # 长安应有 800 兵，成都应有 1000 兵
+    cities_by_name = {c["name"]: c for c in state["your_cities"]}
+    assert cities_by_name["长安"]["troops"] == 800
+    assert cities_by_name["成都"]["troops"] == 1000
+
+
+def test_changan_chengdu_adjacency():
+    """验证长安↔成都新增邻接（蜀道）。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+
+    valid_actions = state["valid_actions"]
+
+    # 应有 march action from 成都→长安 或 长安→成都
+    march_targets = [
+        (a["from"], a["to"])
+        for a in valid_actions if a["type"] == "march"
+    ]
+    assert ("成都", "长安") in march_targets or ("长安", "成都") in march_targets, \
+        f"长安↔成都 march 缺失，march 动作: {march_targets}"
+
+
+def test_loan_mechanism():
+    """验证借粮机制：可负债但下回合招兵有惩罚。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    _register_and_join("魏", "曹操", gid)
+
+    # 先花光粮草（500 粮 → 征兵 250 花 500）
+    r = _submit(token_shu, gid, [
+        {"type": "recruit", "target": "成都", "amount": 200},
+        {"type": "recruit", "target": "长安", "amount": 50},
+    ])
+    assert r.status_code == 200
+    assert r.json()["grain_remaining"] == 0
+
+    _tick(gid)
+
+    # 现在粮草：0 + 2城×80 = 160
+    # 尝试征兵 100（cost 200 without penalty），不够 → 需借贷 40
+    r = _submit(token_shu, gid, [
+        {"type": "recruit", "target": "成都", "amount": 100},
+    ])
+    assert r.status_code == 200
+    # 160 grain, cost 200 → borrowed 40
+    assert r.json()["borrowed"] == 40
+    assert r.json()["recruit_penalty"] is True
+
+    _tick(gid)
+    # 下回合 grain: -40 + 160 = 120, debt cleared (grain >= 0)
+    r = client.get(f"/games/{gid}/state", params={"token": token_shu})
+    state = r.json()
+    assert state["your_resources"]["grain"] >= 120
+
+
+def test_recruit_penalty_cost():
+    """验证负债后招兵 cost +50%（2→3 粮/兵）。"""
+    setup()
+    r = client.post("/games")
+    gid = r.json()["game_id"]
+    token_shu = _register_and_join("蜀", "刘备", gid)
+    _register_and_join("魏", "曹操", gid)
+
+    # 先烧光粮草
+    r = _submit(token_shu, gid, [
+        {"type": "recruit", "target": "成都", "amount": 200},
+        {"type": "recruit", "target": "长安", "amount": 50},
+    ])
+    _tick(gid)
+
+    # tick 后 grain = 0 + 160 = 160
+    # 借粮征兵: 100 × 2 = 200 > 160, borrowed 40
+    r = _submit(token_shu, gid, [
+        {"type": "recruit", "target": "成都", "amount": 100},
+    ])
+    _tick(gid)
+    # grain: 160-200+160 = 120, 惩罚标记应清除
+    # 现在再征兵: 120 grain, 正常 cost 2
+    r = _submit(token_shu, gid, [
+        {"type": "recruit", "target": "成都", "amount": 50},
+    ])
+    assert r.status_code == 200
+    assert r.json()["grain_cost"] == 100  # 50 × 2 = 100 (正常价)
+    assert r.json()["recruit_penalty"] is False
