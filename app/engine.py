@@ -1,11 +1,40 @@
 import json
 import math
 import random
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from sqlmodel import Session, select
 from .models import Game, Agent, City, Action, Player, RegisteredAgent
+
+# ── Dayan Engine integration ──────────────────────────────────
+_DAYAN_PATH = Path(__file__).resolve().parent.parent.parent / "DaYan Engine"
+if _DAYAN_PATH.exists() and str(_DAYAN_PATH) not in sys.path:
+    sys.path.insert(0, str(_DAYAN_PATH))
+
+try:
+    from dayan_engine.core.types import BattleConfig  # noqa: E402
+    from dayan_engine.core.battle import run_battle  # noqa: E402
+    from dayan_engine.narrator.template_narrator import generate as generate_narrative  # noqa: E402
+    HAS_DAYAN = True
+except ImportError:
+    HAS_DAYAN = False
+
+USE_DAYAN_ENGINE = HAS_DAYAN  # Toggle: set False to fall back to simple combat
+
+# Faction → Three Kingdoms general traits (from Dayan Engine presets)
+FACTION_TRAITS: dict[str, dict[str, float]] = {
+    "魏": {"主帅": 0.90, "军师": 0.85, "先锋": 0.70, "后勤": 0.80, "军资": 0.95, "联盟": 0.30},
+    "蜀": {"主帅": 0.75, "军师": 0.90, "先锋": 0.80, "后勤": 0.65, "军资": 0.55, "联盟": 0.95},
+    "吴": {"主帅": 0.70, "军师": 0.95, "先锋": 0.75, "后勤": 0.85, "军资": 0.90, "联盟": 0.70},
+}
+
+FACTION_GENERAL_NAME: dict[str, str] = {
+    "魏": "曹操",
+    "蜀": "刘备",
+    "吴": "孙权",
+}
 
 FACTION_POOL = ["蜀", "魏", "吴"]
 
@@ -883,7 +912,7 @@ def tick(session: Session, game_id: int):
                     defending_faction = ag.faction
 
         if not attacks:
-            # 仅 defend 无 attack: 增加防御工事
+            # Defend-only: increase defense works
             if defended and city.owner is not None:
                 current = defense_works.get(city_name, 0)
                 if current < DEFENSE_WORKS_MAX:
@@ -896,12 +925,11 @@ def tick(session: Session, game_id: int):
                     })
             continue
 
-        # ── 计算防守战力（含防御工事累积加成） ──────────────
-        # §3.2: 防御工事每级 +20% 防守战力
+        # ── Calculate defense power (with defense works bonus) ──
         defense_level = defense_works.get(city_name, 0)
         defense_multiplier = 1.0 + (defense_level * DEFENSE_WORKS_BONUS)
         if city.owner is None:
-            defense_multiplier = 1.0  # 中立城无防御工事
+            defense_multiplier = 1.0  # Neutral cities have no defense works
 
         defense_power = city.troops * defense_multiplier
 
@@ -913,11 +941,43 @@ def tick(session: Session, game_id: int):
         sorted_attackers = sorted(faction_attack.items(), key=lambda x: x[1], reverse=True)
         best_attacker_faction, best_attack_power = sorted_attackers[0]
 
-        # 公开事件摘要
-        public_event = {"city": city_name}
+        # ── Dayan Engine battle resolution ──────────────────
+        dayan_result = None
+        dayan_narrative = ""
+        if USE_DAYAN_ENGINE:
+            try:
+                attacker_traits = FACTION_TRAITS.get(best_attacker_faction, {})
+                defender_faction_name = city.owner or "中立"
+                defender_traits = FACTION_TRAITS.get(
+                    defender_faction_name,
+                    {"主帅": 0.50, "军师": 0.50, "先锋": 0.50, "后勤": 0.50, "军资": 0.50, "联盟": 0.50},
+                )
 
-        # 详细战斗数据（仅用于 private_log）
-        detail = {
+                config = BattleConfig(
+                    attacker_name=FACTION_GENERAL_NAME.get(best_attacker_faction, best_attacker_faction),
+                    defender_name=FACTION_GENERAL_NAME.get(defender_faction_name, defender_faction_name),
+                    attacker_traits=attacker_traits,
+                    defender_traits=defender_traits,
+                    time_desc=f"第{game.tick}回合",
+                    location=city_name,
+                )
+                battle_seed = game.tick * 1000 + hash(city_name) % 1000
+                dayan_result = run_battle(config, seed=battle_seed)
+                dayan_narrative = generate_narrative(dayan_result)
+            except Exception:
+                dayan_result = None
+                dayan_narrative = ""
+
+        # Determine winner: simple comparison is authoritative for game mechanics.
+        # Dayan Engine provides hexagram divination and narrative for flavor.
+        dayan_winner = dayan_result.winner if dayan_result else None
+        attacker_wins = total_attack > defense_power  # primary determinant
+
+        # Public event summary
+        public_event: dict = {"city": city_name}
+
+        # Detailed combat data (for private_log)
+        detail: dict = {
             "city": city_name,
             "defender": city.owner,
             "defense_power": round(defense_power, 1),
@@ -934,16 +994,14 @@ def tick(session: Session, game_id: int):
             ],
         }
 
-        if total_attack > defense_power:
-            # ── 进攻方胜 §2.1, §2.3 ───────────────────────
+        if attacker_wins:
+            # ── Attacker wins ──────────────────────────────
             winner_faction = best_attacker_faction
             troop_losses: dict[str, int] = {}
             for faction, committed in faction_attack.items():
                 if faction == winner_faction:
-                    # §2.1: 进攻胜方损失 25%
                     loss = math.ceil(committed * ATTACKER_WIN_LOSS)
                 else:
-                    # §2.1: 其他进攻方损失 60%
                     loss = math.ceil(committed * ATTACKER_LOSE_LOSS)
                 remaining = committed - loss
                 troop_losses[faction] = max(remaining, 0)
@@ -951,7 +1009,7 @@ def tick(session: Session, game_id: int):
             new_troops = max(troop_losses[winner_faction], GARRISON_MIN)
             combat_changes[city_name] = (winner_faction, new_troops)
 
-            # §3.3: 城易主 → 防御工事清零
+            # City captured → reset defense works
             defense_works[city_name] = 0
 
             public_event["result"] = "captured"
@@ -963,12 +1021,11 @@ def tick(session: Session, game_id: int):
             detail["troops_remaining"] = new_troops
             detail["troop_losses"] = troop_losses
         else:
-            # ── 防守方胜 §2.2 ─────────────────────────────
-            # §2.1: 防守方损失 50%, 进攻方损失 60%
+            # ── Defender wins ──────────────────────────────
             new_troops = max(math.floor(city.troops * (1 - DEFENDER_WIN_LOSS)), GARRISON_MIN)
             combat_changes[city_name] = (city.owner, new_troops)
 
-            # §3.2: 防守成功 + 有 defend 动作 → 防御工事 +1
+            # Successful defense + defend action → defense works +1
             if defended and city.owner is not None:
                 current = defense_works.get(city_name, 0)
                 if current < DEFENSE_WORKS_MAX:
@@ -982,12 +1039,27 @@ def tick(session: Session, game_id: int):
             detail["new_owner"] = city.owner
             detail["troops_remaining"] = new_troops
             detail["defense_works_new_level"] = defense_works.get(city_name, 0)
-            # 记录进攻方损失
+            # Record attacker losses
             attacker_losses = {}
             for faction, committed in faction_attack.items():
                 loss = math.ceil(committed * ATTACKER_LOSE_LOSS)
                 attacker_losses[faction] = max(committed - loss, 0)
             detail["attackers_remaining"] = attacker_losses
+
+        # ── Attach Dayan Engine hexagram data ───────────────
+        if dayan_result:
+            public_event["dayan_hexagram"] = {
+                "main": dayan_result.main_hexagram.name,
+                "changed": dayan_result.changed_hexagram.name,
+            }
+            detail["dayan"] = {
+                "main_hexagram": dayan_result.main_hexagram.name,
+                "changed_hexagram": dayan_result.changed_hexagram.name,
+                "dayan_winner": dayan_result.winner,
+                "total_casualties_attacker": round(dayan_result.total_casualties_attacker, 3),
+                "total_casualties_defender": round(dayan_result.total_casualties_defender, 3),
+                "narrative": dayan_narrative,
+            }
 
         combat_events.append(public_event)
         private_combat_detail.append(detail)
@@ -1111,19 +1183,30 @@ def _write_logs(
     agent_map: dict[int, Agent],
     city_map: dict[str, City],
 ):
-    """写入双轨日志文件。"""
+    """Write dual-track logs with Dayan Engine hexagram data."""
     PUBLIC_LOG_DIR.mkdir(parents=True, exist_ok=True)
     PRIVATE_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now(timezone.utc).isoformat()
 
-    # ── public_log: 只含战斗结果、城池易主、外交 ─────────
+    # Extract Dayan hexagram summaries from combat events for top-level access
+    dayan_hexagrams = []
+    for evt in public_events:
+        if "dayan_hexagram" in evt:
+            dayan_hexagrams.append({
+                "city": evt.get("city"),
+                "main": evt["dayan_hexagram"]["main"],
+                "changed": evt["dayan_hexagram"]["changed"],
+            })
+
+    # ── public_log: combat results, city ownership, diplomacy, hexagrams ──
     pub_entry = {
         "timestamp": ts,
         "game_id": game_id,
         "tick": tick,
         "events": public_events,
         "diplomacy": diplomacy,
+        "dayan_hexagram": dayan_hexagrams,
         "cities": [
             {"name": c.name, "owner": c.owner or "中立"}
             for c in city_map.values()
@@ -1133,7 +1216,7 @@ def _write_logs(
     with open(pub_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(pub_entry, ensure_ascii=False) + "\n")
 
-    # ── private_log: 含所有 agent 提交的 actions、详细内部状态 ──
+    # ── private_log: full agent actions, internal state, Dayan narratives ──
     priv_actions = []
     for a in actions:
         ag = agent_map.get(a.agent_id)
@@ -1148,12 +1231,27 @@ def _write_logs(
             "message": a.message,
         })
 
+    # Collect full Dayan data from combat detail for private log
+    dayan_full = []
+    for d in private_detail:
+        if "dayan" in d:
+            dayan_full.append({
+                "city": d.get("city"),
+                "main_hexagram": d["dayan"]["main_hexagram"],
+                "changed_hexagram": d["dayan"]["changed_hexagram"],
+                "dayan_winner": d["dayan"]["dayan_winner"],
+                "total_casualties_attacker": d["dayan"]["total_casualties_attacker"],
+                "total_casualties_defender": d["dayan"]["total_casualties_defender"],
+                "narrative": d["dayan"]["narrative"],
+            })
+
     priv_entry = {
         "timestamp": ts,
         "game_id": game_id,
         "tick": tick,
         "combat_detail": private_detail,
         "agent_actions": priv_actions,
+        "dayan_full": dayan_full,
         "cities_before_tick": [
             {"name": c.name, "owner": c.owner or "中立", "troops": c.troops}
             for c in city_map.values()

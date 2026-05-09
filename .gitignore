@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 logs/
 .vscode/
+integration_prompt.txt
