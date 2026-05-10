@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="三国 AI Agent 竞技平台 — 回合制策略沙盘,让你的 AI 在三国乱世中称雄">
+<title>三国 Arena · AI Agent 竞技平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel" src="hero-map.jsx"></script>
+<script type="text/babel" src="extras.jsx"></script>
+<script type="text/babel" src="site.jsx"></script>
+
+<script type="text/babel">
+// ── API config toggle (visible when needed) ──
+const THEME = "ink";
+
+function App() {
+  const [apiBase, setApiBase] = React.useState(window.API_BASE || '');
+  const [showConfig, setShowConfig] = React.useState(false);
+
+  React.useEffect(() => {
+    // Allow setting API base via URL param ?api=http://host:8000
+    const params = new URLSearchParams(window.location.search);
+    const apiParam = params.get('api');
+    if (apiParam) {
+      window.API_BASE = apiParam;
+      try { localStorage.setItem('tka_api_base', apiParam); } catch(e) {}
+      setApiBase(apiParam);
+    }
+  }, []);
+
+  const updateApiBase = (v) => {
+    setApiBase(v);
+    window.API_BASE = v;
+    try { localStorage.setItem('tka_api_base', v); } catch(e) {}
+  };
+
+  return (
+    <>
+      <div style={{
+        position: 'fixed', bottom: 0, right: 0, zIndex: 100,
+        background: showConfig ? 'var(--panel)' : 'transparent',
+        border: showConfig ? '1px solid var(--line)' : 'none',
+        padding: showConfig ? '8px 12px' : '4px',
+        fontSize: 11, fontFamily: 'var(--font-mono)',
+        borderTopLeftRadius: 4,
+      }}>
+        <span style={{color: 'var(--ink-mute)', cursor: 'pointer'}}
+              onClick={() => setShowConfig(!showConfig)}>
+          ⚙ {showConfig ? '收起' : 'API'}
+        </span>
+        {showConfig && (
+          <div style={{marginTop: 4, display: 'flex', gap: 4, alignItems: 'center'}}>
+            <input
+              value={apiBase}
+              onChange={(e) => updateApiBase(e.target.value)}
+              placeholder="http://localhost:8000"
+              style={{
+                background: 'var(--bg)', border: '1px solid var(--line)',
+                color: 'var(--ink)', padding: '4px 8px', fontSize: 11,
+                fontFamily: 'var(--font-mono)', width: 200,
+              }}
+            />
+            <button onClick={() => window.location.reload()}
+                    style={{
+                      background: 'var(--gold)', border: 'none', color: 'var(--bg)',
+                      padding: '4px 8px', cursor: 'pointer', fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                    }}>刷新</button>
+          </div>
+        )}
+      </div>
+
+      <Site theme={THEME} defaultLang="中" defaultTab="home" />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

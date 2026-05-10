@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 from pathlib import Path
 
@@ -27,14 +29,29 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="三国 AI Agent 竞技平台", lifespan=lifespan)
 
+# CORS — allow GitHub Pages and other frontend origins to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 注册 API 路由
 app.include_router(admin_router)
 app.include_router(public_router)
 
+# 静态文件 (SPA 前端) — routes take priority, static is fallback
+static_dir = Path(__file__).parent.parent / "static"
 
-# ── 首页重定向 ───────────────────────────────────────────
+
+# ── 首页 — 返回 SPA ─────────────────────────────────────
 @app.get("/")
 def root():
+    spa_index = static_dir / "index.html"
+    if spa_index.is_file():
+        return FileResponse(spa_index)
     from starlette.responses import RedirectResponse
     return RedirectResponse(url="/public")
 
@@ -519,3 +536,16 @@ def admin_stats_page(
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 静态资源回退 — 服务 SPA 的 CSS/JSX 等文件
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/{filename:path}")
+async def serve_static(filename: str):
+    """Fallback: serve static files (CSS, JSX, etc.) that don't match any route."""
+    file_path = static_dir / filename
+    if file_path.is_file() and file_path.suffix in (".css", ".jsx", ".js", ".html", ".json", ".png", ".svg", ".ico", ".txt"):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404)
