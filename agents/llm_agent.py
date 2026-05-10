@@ -347,33 +347,52 @@ class LLMAgent:
                 # ── 写 private_thought 到本地日志 ──────────
                 self._log_private_thought(tick=state["tick"], thought=private_thought)
 
-                # ── 验证动作合法性 ─────────────────────────
-                if not actions:
-                    self._log_llm(system_prompt, user_prompt, raw_response,
-                                  error="actions 为空，跳过本回合")
-                    self.console.print("[dim]本回合不执行任何动作[/]")
-                    # 仍然可以发送 public_speech
-                    if public_speech:
-                        return {"actions": [], "public_speech": public_speech}
-                    return None
-
+                # ── Validate and clamp to server-side bounds ────
                 all_legal = True
+                clamped_actions = []
                 for act in actions:
-                    atype = act.get("type")
-                    if not any(self._match_action(a, act) for a in valid_actions):
+                    valid = LLMAgent._find_valid_action(valid_actions, act)
+                    if valid is None:
                         self._log_llm(system_prompt, user_prompt, raw_response,
                                       error=f"不合法的动作: {act}")
                         self.console.print(
-                            f"[yellow]⚠ 不合法的动作: {atype} → {act.get('target', '?')}，重试…[/]"
+                            f"[yellow]⚠ 不合法的动作: {act.get('type')} → {act.get('target', '?')}，重试…[/]"
                         )
                         all_legal = False
                         break
+
+                    # Clamp numeric parameters to valid_action bounds
+                    clamped = dict(act)
+                    atype = act.get("type")
+                    if atype in ("attack", "march"):
+                        max_troops = valid.get("max_troops", 0)
+                        clamped["troops"] = min(act.get("troops", 0), max_troops)
+                        if clamped["troops"] <= 0:
+                            continue  # drop actions with non-positive troops
+                    elif atype == "recruit":
+                        max_amount = valid.get("max_amount", 0)
+                        clamped["amount"] = min(act.get("amount", 0), max_amount)
+                        if clamped["amount"] <= 0:
+                            continue
+
+                    clamped_actions.append(clamped)
+
+                if not all_legal:
+                    continue  # retry with LLM
+
+                if not clamped_actions:
+                    self._log_llm(system_prompt, user_prompt, raw_response,
+                                  error="所有动作在边界校验后为空，跳过本回合")
+                    self.console.print("[dim]所有动作在边界校验后不合法，跳过本回合[/]")
+                    if public_speech:
+                        return {"actions": [], "public_speech": public_speech}
+                    return None
 
                 if all_legal:
                     # ── 客户端粮草校验 ──────────────────────────
                     grain = state.get("your_resources", {}).get("grain", 0)
                     recruit_penalty = state.get("your_resources", {}).get("recruit_penalty", False)
-                    actions, skipped = self._clip_by_grain(actions, grain, recruit_penalty)
+                    validated_actions, skipped = self._clip_by_grain(clamped_actions, grain, recruit_penalty)
                     if skipped:
                         self.console.print(
                             f"[yellow]⚠ 粮草不足，跳过 {skipped} 个超预算动作[/]"
@@ -401,7 +420,7 @@ class LLMAgent:
                         )
 
                     return {
-                        "actions": actions,
+                        "actions": validated_actions,
                         "public_speech": public_speech,
                     }
 
@@ -422,20 +441,25 @@ class LLMAgent:
         return None
 
     @staticmethod
-    def _match_action(valid: dict, act: dict) -> bool:
-        """检查 act 是否匹配某个 valid_action。"""
-        if valid["type"] != act.get("type"):
-            return False
-        atype = valid["type"]
-        if atype == "attack":
-            return valid.get("from") == act.get("from") and valid.get("target") == act.get("target")
-        elif atype == "march":
-            return valid.get("from") == act.get("from") and valid.get("to") == act.get("to")
-        elif atype in ("defend", "recruit"):
-            return valid.get("target") == act.get("target")
-        elif atype == "diplomacy":
-            return valid.get("target") == act.get("target")
-        return True
+    def _find_valid_action(valid_actions: list[dict], act: dict) -> dict | None:
+        """Return the matching valid_action entry for an LLM-generated action, or None."""
+        atype = act.get("type")
+        for valid in valid_actions:
+            if valid["type"] != atype:
+                continue
+            if atype == "attack":
+                if valid.get("from") == act.get("from") and valid.get("target") == act.get("target"):
+                    return valid
+            elif atype == "march":
+                if valid.get("from") == act.get("from") and valid.get("to") == act.get("to"):
+                    return valid
+            elif atype in ("defend", "recruit"):
+                if valid.get("target") == act.get("target"):
+                    return valid
+            elif atype == "diplomacy":
+                if valid.get("target") == act.get("target"):
+                    return valid
+        return None
 
     # ── 提交动作 ───────────────────────────────────────────────
 

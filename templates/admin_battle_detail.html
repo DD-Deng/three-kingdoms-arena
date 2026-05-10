@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对战详情 #{{battle.battle_id}} - 运营后台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1410; color:#c8b89a; font-family: "SimSun","STSong",serif; min-height:100vh; }
+  .container { max-width:1400px; margin:0 auto; padding:20px; }
+  h1 { color:#d4a84b; font-size:24px; margin-bottom:15px; }
+  .back { color:#b8960a; text-decoration:none; font-size:14px; display:inline-block; margin-bottom:10px; }
+  .meta { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px; padding:15px; background:#221a10; border-left:3px solid #4a3a2a; }
+  .meta-item { }
+  .meta-item label { color:#8a755a; font-size:12px; display:block; }
+  .meta-item span { font-size:16px; }
+  .tabs { display:flex; gap:0; margin-bottom:0; }
+  .tabs a { padding:10px 20px; border:1px solid #3a2a1a; border-bottom:none; background:#1f1710; color:#8a755a; text-decoration:none; }
+  .tabs a.active { background:#2a1f14; color:#d4a84b; border-color:#4a3a2a; }
+  .tab-content { border:1px solid #4a3a2a; padding:20px; background:#1f1710; }
+  h2 { color:#d4a84b; font-size:18px; margin:20px 0 10px; padding-bottom:5px; border-bottom:1px solid #3a2a1a; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; }
+  th { background:#2a1f14; padding:8px; text-align:left; border-bottom:1px solid #3a2a1a; font-size:13px; }
+  td { padding:8px; border-bottom:1px solid #221a10; font-size:13px; }
+  .event { margin:8px 0; padding:8px; background:#221a10; border-left:3px solid #4a3a2a; }
+  .event-captured { border-left-color:#c44; }
+  .event-defended { border-left-color:#4c4; }
+  .winner-蜀 { color:#e04444; }
+  .winner-魏 { color:#4488e0; }
+  .winner-吴 { color:#44a044; }
+  .tick-section { margin-bottom:30px; border:1px solid #2a1a10; padding:15px; }
+  .tick-header { color:#d4a84b; font-size:16px; margin-bottom:10px; }
+  .agent-call { margin:5px 0; padding:8px; background:#1a1410; border:1px solid #2a1a10; }
+  .agent-call details { cursor:pointer; }
+  .agent-call summary { color:#b8960a; }
+  .agent-call pre { font-size:11px; max-height:300px; overflow:auto; margin-top:5px; padding:8px; background:#111; border:1px solid #222; white-space:pre-wrap; }
+  .thought { color:#e0a060; font-style:italic; margin:5px 0; padding:5px 10px; border-left:2px solid #604020; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/admin?token={{admin_token}}" class="back">← 返回列表</a>
+  <h1>⚔ 对战详情 #{{battle.battle_id}}</h1>
+
+  <div class="meta">
+    <div class="meta-item"><label>模型</label><span>{{battle.model}}</span></div>
+    <div class="meta-item"><label>胜者</label><span class="winner-{{battle.winner or ''}}">{{battle.winner or '—'}}</span></div>
+    <div class="meta-item"><label>回合数</label><span>{{battle.total_ticks}}</span></div>
+    <div class="meta-item"><label>状态</label><span>{{battle.status}}</span></div>
+    <div class="meta-item"><label>解说</label><span>{% if battle.has_commentary %}📖 有{% else %}—{% endif %}</span></div>
+    <div class="meta-item"><label>时间</label><span>{{battle.created_at[:19]}}</span></div>
+  </div>
+
+  <div class="tabs">
+    <a href="?tab=overview&token={{admin_token}}" class="{% if tab=='overview' %}active{% endif %}">总览</a>
+    <a href="?tab=agents&token={{admin_token}}" class="{% if tab=='agents' %}active{% endif %}">Agent 日志</a>
+    <a href="?tab=curve&token={{admin_token}}" class="{% if tab=='curve' %}active{% endif %}">势力曲线</a>
+    {% if battle.has_commentary %}<a href="?tab=commentary&token={{admin_token}}" class="{% if tab=='commentary' %}active{% endif %}">评书解说</a>{% endif %}
+  </div>
+
+  <div class="tab-content">
+    {% if tab == 'overview' %}
+    <h2>终局城池快照</h2>
+    {% if battle.summary and battle.summary.cities %}
+    <table>
+      <tr><th>城池</th><th>归属</th><th>兵力</th></tr>
+      {% for c in battle.summary.cities %}
+      <tr>
+        <td>{{c.name}}</td>
+        <td class="winner-{{c.owner or ''}}">{{c.owner or '中立'}}</td>
+        <td>{{c.troops}}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p style="color:#666;">无数据</p>
+    {% endif %}
+
+    <h2>回合时间线</h2>
+    {% for t in ticks %}
+    <div class="tick-section">
+      <div class="tick-header">Tick {{t.tick}}</div>
+      {% if t.events %}
+      {% for ev in t.events %}
+      <div class="event {% if ev.result=='captured' %}event-captured{% else %}event-defended{% endif %}">
+        {% if ev.result == 'captured' %}
+        ⚔ <span class="winner-{{ev.captured_by}}">{{ev.captured_by}}</span> 攻占 {{ev.city}}（夺自 {{ev.from}}）
+        {% elif ev.result == 'defended' %}
+        🛡 <span class="winner-{{ev.defended_by}}">{{ev.defended_by}}</span> 守住 {{ev.city}}
+        {% else %}
+        📋 {{ev}}
+        {% endif %}
+        {% if ev.dayan_hexagram %}
+        <span style="color:#8a755a;font-size:12px;">
+          [卦: {{ev.dayan_hexagram.main}} {% if ev.dayan_hexagram.changed %}→ {{ev.dayan_hexagram.changed}}{% endif %}]
+        </span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if t.diplomacy %}
+      <div style="margin:5px 0;color:#b8960a;">
+        {% for d in t.diplomacy %}
+        📢 <span class="winner-{{d.from_faction}}">{{d.from_faction}}</span>: 「{{d.message}}」
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if t.agent_actions %}
+      <div style="margin-top:5px;">
+        {% for a in t.agent_actions %}
+        <div style="font-size:12px;color:#8a755a;">
+          {{a.agent}}({{a.faction}}) → {{', '.join(a.action_summary)}}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% elif tab == 'agents' %}
+    <h2>所有 Agent 日志文件</h2>
+    <table>
+      <tr><th>文件名</th><th>类型</th><th>Agent</th><th>操作</th></tr>
+      {% for lf in log_files %}
+      <tr>
+        <td>{{lf.file_path}}</td>
+        <td>{{lf.file_type}}</td>
+        <td>{{lf.agent_name or '—'}}</td>
+        <td>
+          {% if lf.agent_name %}
+          <a href="/admin/battles/{{battle.battle_id}}/agent/{{lf.agent_name}}" style="color:#b8960a;">查看全部日志</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% elif tab == 'curve' %}
+    <h2>势力实力变化</h2>
+    {% if power_curve %}
+    <table>
+      <tr><th>Tick</th>
+        <th style="color:#e04444;">蜀 城池</th><th style="color:#e04444;">蜀 兵力</th>
+        <th style="color:#4488e0;">魏 城池</th><th style="color:#4488e0;">魏 兵力</th>
+        <th style="color:#44a044;">吴 城池</th><th style="color:#44a044;">吴 兵力</th>
+      </tr>
+      {% for snap in power_curve %}
+      <tr>
+        <td>{{snap.tick}}</td>
+        <td>{{snap.get('蜀',{}).get('cities',0)}}</td>
+        <td>{{snap.get('蜀',{}).get('troops',0)}}</td>
+        <td>{{snap.get('魏',{}).get('cities',0)}}</td>
+        <td>{{snap.get('魏',{}).get('troops',0)}}</td>
+        <td>{{snap.get('吴',{}).get('cities',0)}}</td>
+        <td>{{snap.get('吴',{}).get('troops',0)}}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p style="color:#666;">无势力曲线数据</p>
+    {% endif %}
+
+    {% elif tab == 'commentary' and battle.has_commentary %}
+    <h2>评书解说</h2>
+    <div style="white-space:pre-wrap;line-height:1.8;font-size:15px;">{{commentary}}</div>
+
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

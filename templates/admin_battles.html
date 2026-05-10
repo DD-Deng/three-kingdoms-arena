@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运营后台 - 对战历史 - 三国竞技平台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1410; color:#c8b89a; font-family: "SimSun","STSong",serif; min-height:100vh; }
+  .container { max-width:1200px; margin:0 auto; padding:20px; }
+  h1 { color:#d4a84b; font-size:28px; margin-bottom:5px; letter-spacing:4px; }
+  h1 small { font-size:14px; color:#8a755a; letter-spacing:0; }
+  .nav { margin:15px 0; padding:10px 0; border-bottom:1px solid #3a2a1a; }
+  .nav a { color:#b8960a; text-decoration:none; margin-right:20px; }
+  .nav a:hover { color:#d4a84b; }
+  table { width:100%; border-collapse:collapse; margin-top:15px; }
+  th { background:#2a1f14; color:#d4a84b; padding:10px; text-align:left; border-bottom:2px solid #4a3a2a; }
+  td { padding:10px; border-bottom:1px solid #2a1a10; }
+  tr:hover { background:#221a10; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:3px; font-size:12px; }
+  .badge-finished { background:#1a3a1a; color:#4a4; }
+  .badge-max_ticks { background:#3a3a1a; color:#aa4; }
+  .badge-error { background:#3a1a1a; color:#a44; }
+  .winner-蜀 { color:#e04444; font-weight:bold; }
+  .winner-魏 { color:#4488e0; font-weight:bold; }
+  .winner-吴 { color:#44a044; font-weight:bold; }
+  .pagination { margin-top:20px; text-align:center; }
+  .pagination a, .pagination span { display:inline-block; padding:8px 14px; margin:0 3px; border:1px solid #3a2a1a; color:#c8b89a; text-decoration:none; }
+  .pagination .current { background:#3a2a1a; color:#d4a84b; }
+  .filters { margin:15px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .filters input, .filters select { background:#2a1a10; border:1px solid #3a2a1a; color:#c8b89a; padding:6px 10px; }
+  .filters button { background:#4a3a2a; border:none; color:#d4a84b; padding:7px 16px; cursor:pointer; }
+  .filters button:hover { background:#5a4a3a; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚔ 三国竞技平台 <small>运营后台</small></h1>
+  <div class="nav">
+    <a href="/admin?token={{admin_token}}">📋 对战列表</a>
+    <a href="/admin/stats?token={{admin_token}}">📊 统计面板</a>
+    <a href="/public">🌐 公开页面</a>
+  </div>
+
+  <form class="filters" method="get">
+    <label>模型 <select name="model">
+      <option value="">全部</option>
+      {% for m in models %}
+      <option value="{{m}}" {% if current_model==m %}selected{% endif %}>{{m}}</option>
+      {% endfor %}
+    </select></label>
+    <label>胜者 <select name="winner">
+      <option value="">全部</option>
+      <option value="蜀" {% if current_winner=='蜀' %}selected{% endif %}>蜀</option>
+      <option value="魏" {% if current_winner=='魏' %}selected{% endif %}>魏</option>
+      <option value="吴" {% if current_winner=='吴' %}selected{% endif %}>吴</option>
+    </select></label>
+    <button type="submit">筛选</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>模型</th>
+        <th>胜者</th>
+        <th>回合数</th>
+        <th>状态</th>
+        <th>解说</th>
+        <th>时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in battles %}
+      <tr>
+        <td>#{{b.battle_id}}</td>
+        <td>{{b.model}}</td>
+        <td>
+          {% if b.winner %}
+          <span class="winner-{{b.winner}}">{{b.winner}}</span>
+          {% else %}
+          <span style="color:#888">—</span>
+          {% endif %}
+        </td>
+        <td>{{b.total_ticks}}</td>
+        <td><span class="badge badge-{{b.status}}">{{b.status}}</span></td>
+        <td>{% if b.has_commentary %}📖{% else %}—{% endif %}</td>
+        <td>{{b.created_at[:19]}}</td>
+        <td><a href="/admin/battles/{{b.battle_id}}?token={{admin_token}}" style="color:#b8960a;">详情</a></td>
+      </tr>
+      {% endfor %}
+      {% if not battles %}
+      <tr><td colspan="8" style="text-align:center;color:#666;">暂无对战记录</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a href="?page={{page-1}}&model={{current_model}}&winner={{current_winner}}&token={{admin_token}}">上一页</a>{% endif %}
+    {% for p in range(1, total_pages+1) %}
+      {% if p == page %}<span class="current">{{p}}</span>
+      {% elif p <= 3 or p > total_pages-3 or (p >= page-2 and p <= page+2) %}
+        <a href="?page={{p}}&model={{current_model}}&winner={{current_winner}}&token={{admin_token}}">{{p}}</a>
+      {% elif p == 4 or p == total_pages-3 %}<span>…</span>{% endif %}
+    {% endfor %}
+    {% if page < total_pages %}<a href="?page={{page+1}}&model={{current_model}}&winner={{current_winner}}&token={{admin_token}}">下一页</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

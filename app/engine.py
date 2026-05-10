@@ -953,6 +953,11 @@ def tick(session: Session, game_id: int):
                     {"主帅": 0.50, "军师": 0.50, "先锋": 0.50, "后勤": 0.50, "军资": 0.50, "联盟": 0.50},
                 )
 
+                battle_seed = game.tick * 1000 + hash(city_name) % 1000
+                n1 = (game.tick * 7 + hash(city_name) * 11) % 100 + 1
+                n2 = (game.tick * 13 + hash(city_name) * 17) % 100 + 1
+                n3 = (game.tick * 19 + hash(city_name) * 23) % 100 + 1
+
                 config = BattleConfig(
                     attacker_name=FACTION_GENERAL_NAME.get(best_attacker_faction, best_attacker_faction),
                     defender_name=FACTION_GENERAL_NAME.get(defender_faction_name, defender_faction_name),
@@ -960,18 +965,20 @@ def tick(session: Session, game_id: int):
                     defender_traits=defender_traits,
                     time_desc=f"第{game.tick}回合",
                     location=city_name,
+                    cast_nums=(n1, n2, n3),
                 )
-                battle_seed = game.tick * 1000 + hash(city_name) % 1000
                 dayan_result = run_battle(config, seed=battle_seed)
                 dayan_narrative = generate_narrative(dayan_result)
             except Exception:
                 dayan_result = None
                 dayan_narrative = ""
 
-        # Determine winner: simple comparison is authoritative for game mechanics.
-        # Dayan Engine provides hexagram divination and narrative for flavor.
-        dayan_winner = dayan_result.winner if dayan_result else None
-        attacker_wins = total_attack > defense_power  # primary determinant
+        # Dayan Engine is the sole determinant of battle outcomes.
+        # Fall back to power comparison only if Dayan Engine is unavailable.
+        if dayan_result is not None:
+            attacker_wins = (dayan_result.winner == "attacker")
+        else:
+            attacker_wins = total_attack > defense_power
 
         # Public event summary
         public_event: dict = {"city": city_name}
@@ -997,12 +1004,14 @@ def tick(session: Session, game_id: int):
         if attacker_wins:
             # ── Attacker wins ──────────────────────────────
             winner_faction = best_attacker_faction
+            atk_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_WIN_LOSS
+            other_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_LOSE_LOSS
             troop_losses: dict[str, int] = {}
             for faction, committed in faction_attack.items():
                 if faction == winner_faction:
-                    loss = math.ceil(committed * ATTACKER_WIN_LOSS)
+                    loss = math.ceil(committed * atk_loss_pct)
                 else:
-                    loss = math.ceil(committed * ATTACKER_LOSE_LOSS)
+                    loss = math.ceil(committed * other_loss_pct)
                 remaining = committed - loss
                 troop_losses[faction] = max(remaining, 0)
 
@@ -1022,7 +1031,9 @@ def tick(session: Session, game_id: int):
             detail["troop_losses"] = troop_losses
         else:
             # ── Defender wins ──────────────────────────────
-            new_troops = max(math.floor(city.troops * (1 - DEFENDER_WIN_LOSS)), GARRISON_MIN)
+            def_loss_pct = dayan_result.total_casualties_defender if dayan_result else DEFENDER_WIN_LOSS
+            atk_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_LOSE_LOSS
+            new_troops = max(math.floor(city.troops * (1 - def_loss_pct)), GARRISON_MIN)
             combat_changes[city_name] = (city.owner, new_troops)
 
             # Successful defense + defend action → defense works +1
@@ -1042,7 +1053,7 @@ def tick(session: Session, game_id: int):
             # Record attacker losses
             attacker_losses = {}
             for faction, committed in faction_attack.items():
-                loss = math.ceil(committed * ATTACKER_LOSE_LOSS)
+                loss = math.ceil(committed * atk_loss_pct)
                 attacker_losses[faction] = max(committed - loss, 0)
             detail["attackers_remaining"] = attacker_losses
 

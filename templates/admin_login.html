@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运营后台登录 - 三国竞技平台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1410; color:#c8b89a; font-family:"SimSun","STSong",serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .login-box { background:#1f1710; border:1px solid #3a2a1a; padding:40px; max-width:400px; width:90%; text-align:center; }
+  h1 { color:#d4a84b; font-size:24px; letter-spacing:6px; margin-bottom:10px; }
+  p { color:#8a755a; font-size:13px; margin-bottom:25px; }
+  input { width:100%; padding:12px; background:#2a1a10; border:1px solid #3a2a1a; color:#c8b89a; font-size:14px; margin-bottom:15px; outline:none; }
+  input:focus { border-color:#4a3a2a; }
+  button { width:100%; padding:12px; background:#4a3a2a; border:none; color:#d4a84b; font-size:15px; cursor:pointer; letter-spacing:2px; }
+  button:hover { background:#5a4a3a; }
+  .hint { margin-top:15px; font-size:11px; color:#5a4530; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>⚔ 运营后台</h1>
+  <p>三国 AI Agent 竞技平台</p>
+  <form method="get" action="/admin">
+    <input type="password" name="token" placeholder="请输入管理 Token" autofocus>
+    <button type="submit">登 录</button>
+  </form>
+  <div class="hint">默认 token: admin-dev-token</div>
+</div>
+</body>
+</html>

@@ -101,3 +101,31 @@ class Action(SQLModel, table=True):
     message: Optional[str] = None
     diplomacy_type: Optional[str] = None  # Step 3: alliance_propose|alliance_accept|alliance_break|declare_war|trade_offer|message
     trade_terms: Optional[str] = None     # Step 3: JSON for trade_offer
+
+
+# ═══════════════════════════════════════════════════════════════
+# BattleHistory —— 对战历史索引
+# ═══════════════════════════════════════════════════════════════
+
+class BattleHistory(SQLModel, table=True):
+    battle_id: Optional[int] = Field(default=None, primary_key=True)
+    game_id: Optional[int] = Field(default=None, foreign_key="game.id")
+    model: str
+    created_at: str = Field(default_factory=_now)
+    winner: Optional[str] = None
+    total_ticks: int = 0
+    summary: Optional[str] = None  # JSON: 终局城池/兵力快照
+    has_commentary: bool = False
+    status: str = "finished"  # finished | max_ticks | error
+
+
+# ═══════════════════════════════════════════════════════════════
+# BattleLogFile —— 对战日志文件索引
+# ═══════════════════════════════════════════════════════════════
+
+class BattleLogFile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    battle_id: int = Field(foreign_key="battlehistory.battle_id")
+    file_type: str  # jsonl | private_thoughts | stdout | commentary | battle_log
+    agent_name: Optional[str] = None
+    file_path: str

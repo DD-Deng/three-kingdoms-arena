@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对战 #{{battle.battle_id}} - 三国竞技场</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1410; color:#c8b89a; font-family: "SimSun","STSong","KaiTi",serif; min-height:100vh; }
+  .container { max-width:1100px; margin:0 auto; padding:20px; }
+  h1 { color:#d4a84b; font-size:28px; letter-spacing:4px; margin-bottom:5px; }
+  .back { color:#b8960a; text-decoration:none; font-size:14px; display:inline-block; margin-bottom:15px; }
+  .meta { display:flex; gap:20px; flex-wrap:wrap; margin:15px 0; padding:15px; background:#221a10; border:1px solid #3a2a1a; }
+  .meta-item label { color:#8a755a; font-size:12px; display:block; }
+  .meta-item span { font-size:16px; }
+  .winner-蜀 { color:#e04444; font-weight:bold; }
+  .winner-魏 { color:#4488e0; font-weight:bold; }
+  .winner-吴 { color:#44a044; font-weight:bold; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:3px; font-size:12px; }
+  .badge-finished { background:#1a3a1a; color:#4a4; }
+  .badge-max_ticks { background:#3a3a1a; color:#aa4; }
+  .tick-section { margin:20px 0; border:1px solid #2a1a10; padding:15px; background:#1f1710; }
+  .tick-header { color:#d4a84b; font-size:18px; margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #2a1a10; }
+  .event { margin:6px 0; padding:8px; background:#221a10; border-left:3px solid #4a3a2a; font-size:14px; }
+  .event-captured { border-left-color:#c44; }
+  .event-defended { border-left-color:#4c4; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; }
+  th { background:#2a1f14; padding:6px 10px; text-align:left; border-bottom:1px solid #3a2a1a; font-size:13px; }
+  td { padding:6px 10px; border-bottom:1px solid #221a10; font-size:13px; }
+  .diplomacy-msg { color:#b8960a; margin:4px 0; font-size:13px; }
+  .thought { color:#e0a060; margin:4px 0; padding:5px 10px; border-left:2px solid #604020; font-size:13px; font-style:italic; display:none; }
+  .thought-toggle { color:#b8960a; cursor:pointer; font-size:12px; margin-left:8px; text-decoration:underline; }
+  .thought.show { display:block; }
+  .agent-actions { font-size:12px; color:#8a755a; margin-top:5px; }
+  .city-table { margin:5px 0; }
+  .footer { text-align:center; margin-top:40px; padding:20px; color:#5a4530; font-size:12px; border-top:1px solid #2a1a10; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/public" class="back">← 返回对战列表</a>
+  <h1>⚔ 对战 #{{battle.battle_id}}</h1>
+
+  <div class="meta">
+    <div class="meta-item"><label>模型</label><span>{{battle.model}}</span></div>
+    <div class="meta-item"><label>胜者</label>
+      <span class="winner-{{battle.winner or ''}}">{{battle.winner or '未分胜负'}}</span>
+    </div>
+    <div class="meta-item"><label>回合数</label><span>{{battle.total_ticks}}</span></div>
+    <div class="meta-item"><label>状态</label><span class="badge badge-{{battle.status}}">{{battle.status}}</span></div>
+    <div class="meta-item"><label>时间</label><span>{{battle.created_at[:19]}}</span></div>
+    {% if battle.has_commentary %}
+    <div class="meta-item"><label>评书</label><span><a href="/public/battles/{{battle.battle_id}}/commentary" style="color:#b8960a;">📖 查看评书解说</a></span></div>
+    {% endif %}
+  </div>
+
+  <!-- 势力实力变化曲线 -->
+  {% if power_curve %}
+  <h2 style="color:#d4a84b;font-size:18px;margin:20px 0 10px;">📊 势力实力变化</h2>
+  <table>
+    <tr><th>Tick</th>
+      <th style="color:#e04444;">蜀 城池</th><th style="color:#e04444;">蜀 兵力</th>
+      <th style="color:#4488e0;">魏 城池</th><th style="color:#4488e0;">魏 兵力</th>
+      <th style="color:#44a044;">吴 城池</th><th style="color:#44a044;">吴 兵力</th>
+    </tr>
+    {% for snap in power_curve %}
+    <tr>
+      <td>{{snap.tick}}</td>
+      <td>{{snap.get('蜀',{}).get('cities',0)}}</td><td>{{snap.get('蜀',{}).get('troops',0)}}</td>
+      <td>{{snap.get('魏',{}).get('cities',0)}}</td><td>{{snap.get('魏',{}).get('troops',0)}}</td>
+      <td>{{snap.get('吴',{}).get('cities',0)}}</td><td>{{snap.get('吴',{}).get('troops',0)}}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- Tick 时间线 -->
+  <h2 style="color:#d4a84b;font-size:18px;margin:20px 0 10px;">⏳ 战报时间线</h2>
+  {% for t in ticks %}
+  <div class="tick-section">
+    <div class="tick-header">第 {{t.tick}} 回合</div>
+
+    <!-- 城池快照 -->
+    {% if t.cities %}
+    <table class="city-table">
+      <tr><th>城池</th><th>归属</th><th>兵力</th></tr>
+      {% for c in t.cities %}
+      <tr>
+        <td>{{c.name}}</td>
+        <td class="winner-{{c.owner or ''}}">{{c.owner or '中立'}}</td>
+        <td>{{c.troops}}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    <!-- 战斗事件 -->
+    {% for ev in t.events %}
+    <div class="event {% if ev.result=='captured' %}event-captured{% else %}event-defended{% endif %}">
+      {% if ev.result == 'captured' %}
+      ⚔ <span class="winner-{{ev.captured_by}}">{{ev.captured_by}}</span> 攻占 <strong>{{ev.city}}</strong>（夺自 {{ev.from}}）
+      {% elif ev.result == 'defended' %}
+      🛡 <span class="winner-{{ev.defended_by}}">{{ev.defended_by}}</span> 守住 <strong>{{ev.city}}</strong>
+      {% endif %}
+      {% if ev.dayan_hexagram %}
+      <span style="color:#8a755a;font-size:11px;">[{{ev.dayan_hexagram.main}}之{{ev.dayan_hexagram.changed}}]</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <!-- 外交喊话 -->
+    {% for d in t.diplomacy %}
+    <div class="diplomacy-msg">
+      📢 <span class="winner-{{d.from_faction}}">{{d.from_faction}}</span>: 「{{d.message}}」
+    </div>
+    {% endfor %}
+
+    <!-- Agent 动作 -->
+    {% if t.agent_actions %}
+    <div class="agent-actions">
+      {% for a in t.agent_actions %}
+      {{a.agent}}(<span class="winner-{{a.faction}}">{{a.faction}}</span>) → {{', '.join(a.action_summary)}}
+      {% if not loop.last %}<br>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if not ticks %}
+  <p style="color:#666;text-align:center;padding:30px;">暂无可显示的对战数据</p>
+  {% endif %}
+
+  <!-- 内心独白（仅 finished 显示） -->
+  {% if (battle.status == 'finished' or battle.status == 'max_ticks') and private_thoughts %}
+  <h2 style="color:#d4a84b;font-size:18px;margin:30px 0 10px;">💭 战后揭秘：Agent 内心独白</h2>
+  <p style="font-size:12px;color:#8a755a;margin-bottom:10px;">点击展开查看各势力 agent 在每回合的真实想法</p>
+  {% for agent_name, thoughts in private_thoughts.items() %}
+  <div style="margin-bottom:20px;">
+    <h3 style="color:#c8b89a;font-size:15px;margin-bottom:5px;">{{agent_name}}</h3>
+    {% for th in thoughts %}
+    <div style="margin:3px 0;">
+      <span style="color:#8a755a;">Tick {{th.tick}}:</span>
+      <span class="thought-toggle" onclick="this.nextElementSibling.classList.toggle('show');this.textContent=this.nextElementSibling.classList.contains('show')?'收起 ▲':'展开 ▼';">展开 ▼</span>
+      <div class="thought">{{th.private_thought}}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<div class="footer">
+  三国AI竞技平台 · AI自动对战 · 仅作娱乐
+</div>
+</body>
+</html>

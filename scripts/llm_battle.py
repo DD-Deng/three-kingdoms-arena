@@ -23,6 +23,10 @@ _src = Path(__file__).resolve().parent.parent
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
+from app.database import init_db, engine
+from app.models import BattleHistory, BattleLogFile
+from sqlmodel import Session
+
 console = Console()
 
 FACTION_COLORS = {"蜀": "red", "魏": "blue", "吴": "green"}
@@ -408,6 +412,12 @@ class BattleOrchestrator:
                         encoding="utf-8")
         console.print(f"\n📋 完整对战日志已保存: {path}")
 
+        # ── 自动归档到数据库 ─────────────────────────────
+        try:
+            self._archive_to_db(str(path), ts)
+        except Exception as e:
+            console.print(f"[yellow]⚠ 数据库归档失败: {e}[/]")
+
     def _print_final_report(self):
         result = self.battle_log.get("final_result", {})
         winner = result.get("winner")
@@ -622,6 +632,91 @@ class BattleOrchestrator:
         except (json.JSONDecodeError, KeyError):
             # 回退：纯文本
             return raw
+
+    def _archive_to_db(self, battle_log_path: str, ts: str):
+        """将对战日志写入数据库。"""
+        init_db()
+        result = self.battle_log.get("final_result", {})
+        ticks = self.battle_log.get("ticks", [])
+        final_tick = ticks[-1] if ticks else {}
+
+        # Determine status
+        status = result.get("status", "finished")
+        winner = result.get("winner")
+        total_ticks = len(ticks)
+
+        # Build summary: final cities snapshot
+        final_cities = result.get("cities", final_tick.get("cities", []))
+        summary = json.dumps({"cities": final_cities}, ensure_ascii=False)
+
+        # Check if commentary was generated
+        has_commentary = False
+        for fn in os.listdir("logs"):
+            if fn.endswith("_commentary.md") and ts in fn:
+                has_commentary = True
+                break
+
+        with Session(engine) as session:
+            bh = BattleHistory(
+                game_id=self.game_id,
+                model=self.model,
+                created_at=self.battle_log.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                winner=winner,
+                total_ticks=total_ticks,
+                summary=summary,
+                has_commentary=has_commentary,
+                status=status,
+            )
+            session.add(bh)
+            session.flush()
+            bid = bh.battle_id
+
+            # Battle log main file
+            session.add(BattleLogFile(
+                battle_id=bid,
+                file_type="battle_log",
+                file_path=battle_log_path,
+            ))
+
+            # Agent JSONL/stdout logs
+            for _, name, faction in self.agent_procs:
+                jsonl_path = f"logs/{self.game_id}_{name}.jsonl"
+                if Path(jsonl_path).exists():
+                    session.add(BattleLogFile(
+                        battle_id=bid,
+                        file_type="jsonl",
+                        agent_name=name,
+                        file_path=jsonl_path,
+                    ))
+                pt_path = f"logs/{self.game_id}_{name}_private_thoughts.jsonl"
+                if Path(pt_path).exists():
+                    session.add(BattleLogFile(
+                        battle_id=bid,
+                        file_type="private_thoughts",
+                        agent_name=name,
+                        file_path=pt_path,
+                    ))
+                stdout_path = f"logs/{self.game_id}_{name}.stdout"
+                if Path(stdout_path).exists():
+                    session.add(BattleLogFile(
+                        battle_id=bid,
+                        file_type="stdout",
+                        agent_name=name,
+                        file_path=stdout_path,
+                    ))
+
+            # Commentary
+            for fn in sorted(os.listdir("logs")):
+                if fn.endswith("_commentary.md") and ts in fn:
+                    session.add(BattleLogFile(
+                        battle_id=bid,
+                        file_type="commentary",
+                        file_path=f"logs/{fn}",
+                    ))
+                    break
+
+            session.commit()
+            console.print(f"[dim]📊 对战 #{bid} 已归档至数据库[/]")
 
     @staticmethod
     def _render_commentary_md(data: dict) -> str:
