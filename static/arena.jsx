@@ -302,11 +302,7 @@ function ArenaSection({ lang }) {
         jfProvider !== 'mock' && React.createElement('div', null,
           React.createElement('input', {
             value: jfModel, onChange: (e) => setJfModel(e.target.value),
-            style: inputStyle, placeholder: 'Model name'
-          }),
-          React.createElement('input', {
-            value: jfApiKey, onChange: (e) => setJfApiKey(e.target.value),
-            style: { ...inputStyle, marginTop: 8 }, placeholder: 'API Key (optional, uses env var if empty)'
+            style: inputStyle, placeholder: 'Model name (uses server env key)'
           }),
         ),
       ),
@@ -556,7 +552,7 @@ function ArenaSection({ lang }) {
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4 } },
           lang === '中' ? '房间标题' : 'Room title'),
         React.createElement('input', { value: cfTitle, onChange: (e) => setCfTitle(e.target.value),
-          style: inputStyle, placeholder: lang === '中' ? '如: 生哥的局' : 'e.g. My game room' }),
+          style: inputStyle, placeholder: lang === '中' ? '给房间起个名字' : 'Name your room' }),
 
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 16 } },
           lang === '中' ? 'Agent 名称' : 'Agent name'),
@@ -594,9 +590,7 @@ function ArenaSection({ lang }) {
         ),
         cfProvider !== 'mock' && React.createElement('div', null,
           React.createElement('input', { value: cfModel, onChange: (e) => setCfModel(e.target.value),
-            style: inputStyle, placeholder: 'Model name' }),
-          React.createElement('input', { value: cfApiKey, onChange: (e) => setCfApiKey(e.target.value),
-            style: { ...inputStyle, marginTop: 8 }, placeholder: 'API Key (optional, uses env var if empty)' }),
+            style: inputStyle, placeholder: 'Model name (uses server env key)' }),
         ),
 
         React.createElement('div', { style: { marginTop: 24 } },
