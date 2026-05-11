@@ -57,6 +57,15 @@ class Game(SQLModel, table=True):
     last_tick_intentions: Optional[str] = Field(default=None)  # JSON: 上回合攻击意图(不含兵力)
     resources: Optional[str] = Field(default=None)  # JSON: {"蜀":{"grain":500},...}
 
+    # PvP arena fields
+    mode: str = Field(default="auto")               # "auto" | "pvp"
+    host_agent_id: Optional[int] = Field(default=None, foreign_key="agent.id")
+    auto_advance: bool = Field(default=True)
+    created_by_player_id: Optional[str] = Field(default=None)
+    title: Optional[str] = Field(default=None)
+    max_ticks: int = Field(default=35)
+    tick_timeout_sec: int = Field(default=60)
+
 
 # ═══════════════════════════════════════════════════════════════
 # Agent —— 对局参与者（关联已注册 agent）
@@ -69,6 +78,11 @@ class Agent(SQLModel, table=True):
     agent_name: str
     faction: str  # 蜀 | 魏 | 吴
     token: str = Field(default_factory=_new_token)
+
+    # PvP arena fields
+    agent_mode: str = Field(default="self_hosted")    # "managed" | "self_hosted"
+    llm_config: Optional[str] = Field(default=None)   # JSON — LLM provider config
+    persona_config: Optional[str] = Field(default=None)  # JSON — persona description
 
 
 # ═══════════════════════════════════════════════════════════════

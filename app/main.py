@@ -539,6 +539,130 @@ def admin_stats_page(
 
 
 # ═══════════════════════════════════════════════════════════════
+# PvP Arena — 对战大厅 API
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.get("/lobby")
+def lobby_list(session: Session = Depends(get_session)):
+    return {"games": eng.lobby_list_games(session)}
+
+
+@app.post("/games/create")
+def pvp_create_game(body: dict, session: Session = Depends(get_session)):
+    try:
+        gid, agent_id, token, secret = eng.pvp_create_game(
+            session,
+            title=body.get("title"),
+            player_id=body.get("player_id"),
+            max_ticks=body.get("max_ticks", 35),
+            tick_timeout_sec=body.get("tick_timeout_sec", 60),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"game_id": gid, "agent_id": agent_id, "token": token, "secret": secret}
+
+
+@app.post("/games/{game_id}/join-managed")
+def pvp_join_managed(
+    game_id: int,
+    body: dict,
+    session: Session = Depends(get_session),
+):
+    try:
+        token, faction, gid = eng.pvp_join_managed(
+            session, game_id,
+            player_id=body.get("player_id"),
+            agent_name=body["agent_name"],
+            faction=body["faction"],
+            llm_config=body.get("llm_config"),
+            persona=body.get("persona"),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"token": token, "faction": faction, "game_id": gid}
+
+
+@app.post("/games/{game_id}/join-selfhosted")
+def pvp_join_selfhosted(
+    game_id: int,
+    body: dict,
+    session: Session = Depends(get_session),
+):
+    try:
+        token, gid = eng.pvp_join_selfhosted(
+            session, game_id,
+            agent_id=body["agent_id"],
+            secret=body["secret"],
+            faction=body["faction"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"token": token, "game_id": gid, "agent_id": body["agent_id"]}
+
+
+@app.put("/games/{game_id}/agent/{token}/config")
+def update_agent_config(
+    game_id: int,
+    token: str,
+    body: dict,
+    session: Session = Depends(get_session),
+):
+    agent = _auth(session, game_id, token)
+    if body.get("persona"):
+        agent.persona_config = body["persona"]
+    if body.get("llm_config"):
+        agent.llm_config = json.dumps(body["llm_config"], ensure_ascii=False)
+    session.add(agent)
+    session.commit()
+    return {"msg": "配置已更新"}
+
+
+@app.post("/games/{game_id}/start")
+def pvp_start_game(
+    game_id: int,
+    body: dict,
+    session: Session = Depends(get_session),
+):
+    try:
+        result = eng.pvp_start_game(session, game_id, token=body["token"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+@app.get("/games/{game_id}/live")
+def pvp_live_game(
+    game_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        return eng.live_game_state(session, game_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/my-games")
+def my_games(
+    player_id: str,
+    session: Session = Depends(get_session),
+):
+    return {"games": eng.my_games(session, player_id)}
+
+
+@app.post("/games/{game_id}/surrender")
+def pvp_surrender(
+    game_id: int,
+    body: dict,
+    session: Session = Depends(get_session),
+):
+    try:
+        return eng.surrender_agent(session, game_id, token=body["token"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
 # 静态资源回退 — 服务 SPA 的 CSS/JSX 等文件
 # ═══════════════════════════════════════════════════════════════
 

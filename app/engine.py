@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import random
 import sys
 from collections import defaultdict
@@ -676,6 +677,11 @@ def submit_actions(
                 session.add(action)
 
     session.commit()
+
+    # ── PvP auto-advance: check if all agents submitted ───────
+    if game.mode == "pvp":
+        pvp_maybe_advance(session, game_id)
+
     return {
         "msg": f"{len(validated)} 个动作已提交",
         "tick": game.tick,
@@ -1271,3 +1277,562 @@ def _write_logs(
     priv_path = PRIVATE_LOG_DIR / f"{game_id}.jsonl"
     with open(priv_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(priv_entry, ensure_ascii=False) + "\n")
+
+
+# ═══════════════════════════════════════════════════════════════
+# PvP Arena — 对战大厅函数
+# ═══════════════════════════════════════════════════════════════
+
+
+def lobby_list_games(session: Session) -> list[dict]:
+    """Return all joinable PvP games (status=waiting, mode=pvp)."""
+    games = session.exec(
+        select(Game).where(Game.mode == "pvp", Game.status == "waiting")
+    ).all()
+    result = []
+    for g in games:
+        agents = session.exec(select(Agent).where(Agent.game_id == g.id)).all()
+        slots = {}
+        for f in FACTION_POOL:
+            match = [a for a in agents if a.faction == f]
+            slots[f] = match[0].agent_name if match else None
+        # Skip games that are already full
+        if all(slots.values()):
+            continue
+        host_name = ""
+        if g.host_agent_id:
+            host = session.get(Agent, g.host_agent_id)
+            if host:
+                host_name = host.agent_name
+        result.append({
+            "game_id": g.id,
+            "title": g.title or f"对战 #{g.id}",
+            "mode": g.mode,
+            "slots": slots,
+            "host_name": host_name,
+        })
+    return result
+
+
+def pvp_create_game(
+    session: Session,
+    title: str | None = None,
+    player_id: str | None = None,
+    max_ticks: int = 35,
+    tick_timeout_sec: int = 60,
+) -> tuple[int, int, str, str]:  # (game_id, agent_id, token, secret)
+    """Create a PvP game + auto-register a host agent."""
+    # Create the game
+    game = Game(
+        mode="pvp",
+        status="waiting",
+        auto_advance=True,
+        title=title,
+        max_ticks=max_ticks,
+        tick_timeout_sec=tick_timeout_sec,
+        created_by_player_id=player_id,
+    )
+    session.add(game)
+    session.flush()
+
+    # Create cities
+    for name in ALL_CITIES:
+        owner, troops = INITIAL_SETUP[name]
+        session.add(City(game_id=game.id, name=name, owner=owner, troops=troops))
+
+    resources = {
+        f: {
+            "grain": INITIAL_GRAIN.get(f, 500),
+            "debt": 0,
+            "trust_score": TRUST_INITIAL,
+        }
+        for f in FACTION_POOL
+    }
+    game.resources = json.dumps(resources, ensure_ascii=False)
+    session.add(game)
+
+    # Register a player + agent for the host
+    if not player_id:
+        player = Player()
+        session.add(player)
+        session.flush()
+        player_id = player.player_id
+    else:
+        player = session.get(Player, player_id)
+        if player is None:
+            player = Player(player_id=player_id)
+            session.add(player)
+            session.flush()
+
+    reg = RegisteredAgent(
+        player_id=player_id,
+        agent_name="房主",
+    )
+    session.add(reg)
+    session.flush()
+
+    # Host joins as managed agent with first available faction
+    host_faction = FACTION_POOL[0]
+    agent = Agent(
+        game_id=game.id,
+        registered_agent_id=reg.agent_id,
+        agent_name=reg.agent_name,
+        faction=host_faction,
+        agent_mode="managed",
+    )
+    session.add(agent)
+    session.flush()
+
+    game.host_agent_id = agent.id
+    session.add(game)
+    session.commit()
+    session.refresh(agent)
+
+    return game.id, reg.agent_id, agent.token, reg.secret
+
+
+def pvp_join_managed(
+    session: Session,
+    game_id: int,
+    player_id: str | None,
+    agent_name: str,
+    faction: str,
+    llm_config: dict | None = None,
+    persona: str | None = None,
+) -> tuple[str, str, int]:  # (token, faction, game_id)
+    """Join a PvP game as a managed agent."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    if game.status != "waiting":
+        raise ValueError("对局已开始")
+    if faction not in FACTION_POOL:
+        raise ValueError(f"势力必须是: {FACTION_POOL}")
+
+    existing = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.faction == faction)
+    ).first()
+    if existing:
+        raise ValueError(f"势力 [{faction}] 已被占用")
+
+    # Register player if needed
+    if not player_id:
+        player = Player()
+        session.add(player)
+        session.flush()
+        player_id = player.player_id
+    else:
+        player = session.get(Player, player_id)
+        if player is None:
+            player = Player(player_id=player_id)
+            session.add(player)
+            session.flush()
+
+    reg = RegisteredAgent(
+        player_id=player_id,
+        agent_name=agent_name,
+    )
+    session.add(reg)
+    session.flush()
+
+    agent = Agent(
+        game_id=game_id,
+        registered_agent_id=reg.agent_id,
+        agent_name=agent_name,
+        faction=faction,
+        agent_mode="managed",
+        llm_config=json.dumps(llm_config, ensure_ascii=False) if llm_config else None,
+        persona_config=persona,
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+
+    return agent.token, agent.faction, game_id
+
+
+def pvp_join_selfhosted(
+    session: Session,
+    game_id: int,
+    agent_id: str,
+    secret: str,
+    faction: str,
+) -> tuple[str, int]:  # (token, game_id)
+    """Join a PvP game as a self-hosted agent using existing credentials."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    if game.status != "waiting":
+        raise ValueError("对局已开始")
+    if faction not in FACTION_POOL:
+        raise ValueError(f"势力必须是: {FACTION_POOL}")
+
+    reg = session.get(RegisteredAgent, agent_id)
+    if reg is None:
+        raise ValueError("agent 未注册")
+    if reg.secret != secret:
+        raise ValueError("secret 不正确")
+
+    existing = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.faction == faction)
+    ).first()
+    if existing:
+        raise ValueError(f"势力 [{faction}] 已被占用")
+
+    agent = Agent(
+        game_id=game_id,
+        registered_agent_id=agent_id,
+        agent_name=reg.agent_name,
+        faction=faction,
+        agent_mode="self_hosted",
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+
+    return agent.token, game_id
+
+
+def pvp_start_game(session: Session, game_id: int, token: str) -> dict:
+    """Start a PvP game. Token must belong to the host agent."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    if game.mode != "pvp":
+        raise ValueError("不是 PvP 对局")
+    if game.status != "waiting":
+        raise ValueError("对局已开始")
+
+    agent = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.token == token)
+    ).first()
+    if agent is None:
+        raise ValueError("无效 token")
+
+    if game.host_agent_id and agent.id != game.host_agent_id:
+        raise ValueError("只有房主可以开始对局")
+
+    game.status = "active"
+    session.add(game)
+    session.commit()
+
+    # Trigger managed agent decisions synchronously (same session)
+    managed = session.exec(
+        select(Agent).where(
+            Agent.game_id == game_id,
+            Agent.agent_mode == "managed",
+        )
+    ).all()
+    for ma in managed:
+        try:
+            auto_decide_managed(session, game_id, ma)
+        except Exception as e:
+            print(f"[pvp_start_game] managed agent {ma.agent_name} decision error: {e}")
+
+    # After managed agents submit, check if we should auto-advance
+    pvp_maybe_advance(session, game_id)
+
+    return {"status": "active", "tick": game.tick}
+
+
+def my_games(session: Session, player_id: str) -> list[dict]:
+    """Return all games a player is participating in."""
+    agents_stmt = select(RegisteredAgent).where(RegisteredAgent.player_id == player_id)
+    regs = session.exec(agents_stmt).all()
+    reg_ids = [r.agent_id for r in regs]
+    if not reg_ids:
+        return []
+
+    game_agents = session.exec(
+        select(Agent).where(Agent.registered_agent_id.in_(reg_ids))
+    ).all()
+    game_ids = list(set(a.game_id for a in game_agents))
+    if not game_ids:
+        return []
+
+    games = session.exec(select(Game).where(Game.id.in_(game_ids))).all()
+    result = []
+    for g in games:
+        agents_in_game = [a for a in game_agents if a.game_id == g.id]
+        result.append({
+            "game_id": g.id,
+            "status": g.status,
+            "mode": g.mode,
+            "tick": g.tick,
+            "winner": g.winner,
+            "title": g.title or f"对战 #{g.id}",
+            "agents": [
+                {"name": a.agent_name, "faction": a.faction, "mode": a.agent_mode}
+                for a in agents_in_game
+            ],
+        })
+    return result
+
+
+def surrender_agent(session: Session, game_id: int, token: str) -> dict:
+    """Surrender — agent's cities become neutral."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    agent = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.token == token)
+    ).first()
+    if agent is None:
+        raise ValueError("无效 token")
+
+    cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    for c in cities:
+        if c.owner == agent.faction:
+            c.owner = None
+            c.troops = 0
+            session.add(c)
+    session.commit()
+
+    return {"msg": f"{agent.agent_name}({agent.faction}) 已投降"}
+
+
+def live_game_state(session: Session, game_id: int) -> dict:
+    """Public live state for spectators."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+
+    cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+
+    events = []
+    if game.last_tick_events:
+        events = json.loads(game.last_tick_events)
+
+    diplomacy = []
+    if game.last_tick_diplomacy:
+        diplomacy = json.loads(game.last_tick_diplomacy)
+
+    # Check submitted status for each agent
+    agent_info = []
+    for a in agents:
+        existing = session.exec(
+            select(Action).where(
+                Action.game_id == game_id,
+                Action.agent_id == a.id,
+                Action.tick == game.tick,
+            )
+        ).first()
+        agent_info.append({
+            "id": a.id,
+            "name": a.agent_name,
+            "faction": a.faction,
+            "mode": a.agent_mode,
+            "submitted": existing is not None,
+        })
+
+    return {
+        "game_id": game.id,
+        "status": game.status,
+        "tick": game.tick,
+        "winner": game.winner,
+        "cities": [
+            {"name": c.name, "owner": c.owner, "troops": c.troops}
+            for c in cities
+        ],
+        "events": events,
+        "diplomacy": diplomacy,
+        "agents": agent_info,
+        "max_ticks": game.max_ticks,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# PvP Auto-Advance — Managed Agent Decision + Tick Trigger
+# ═══════════════════════════════════════════════════════════════
+
+
+def _build_llm_provider(agent: Agent):
+    """Build an LLM provider from the agent's llm_config."""
+    llm_config = json.loads(agent.llm_config) if agent.llm_config else {}
+    provider_name = llm_config.get("provider", "mock")
+    api_key = llm_config.get("api_key") or os.environ.get("LLM_API_KEY", "")
+    base_url = llm_config.get("base_url")
+
+    if provider_name == "mock":
+        from agents.llm_agent import MockProvider
+        return MockProvider()
+    elif provider_name in ("openai", "deepseek"):
+        from agents.llm_agent import OpenAICompatProvider
+        model = llm_config.get("model", "deepseek-chat" if provider_name == "deepseek" else "gpt-4o")
+        return OpenAICompatProvider(model=model, api_key=api_key, base_url=base_url)
+    elif provider_name == "claude":
+        from agents.llm_agent import AnthropicProvider
+        model = llm_config.get("model", "claude-sonnet-4-6-20250514")
+        return AnthropicProvider(model=model, api_key=api_key)
+    else:
+        from agents.llm_agent import MockProvider
+        return MockProvider()
+
+
+def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | None:
+    """Auto-decide for a managed agent using LLM."""
+    try:
+        from agents.prompts import build_prompt
+
+        state = get_state(session, game_id, agent)
+        valid_actions = state.get("valid_actions", [])
+        persona = agent.persona_config or "你是一位三国时期的君主。"
+
+        system_prompt, user_prompt = build_prompt(persona, state)
+        provider = _build_llm_provider(agent)
+
+        parsed = provider.decide(system_prompt, user_prompt, valid_actions)
+        actions = parsed.get("actions", [])
+        if not actions and "action" in parsed:
+            actions = [parsed["action"]]
+        public_speech = parsed.get("public_speech", "")
+
+        # Validate & clamp actions
+        clamped = []
+        for act in actions:
+            atype = act.get("type")
+            if atype == "attack":
+                from_c = act.get("from")
+                target = act.get("target")
+                troops = act.get("troops", 0)
+                valid = next((a for a in valid_actions if a["type"] == "attack" and a.get("from") == from_c and a.get("target") == target), None)
+                if valid:
+                    troops = min(troops, valid.get("max_troops", troops))
+                    if troops > 0:
+                        clamped.append({"type": "attack", "from": from_c, "target": target, "troops": troops})
+            elif atype == "defend":
+                target = act.get("target")
+                valid = next((a for a in valid_actions if a["type"] == "defend" and a.get("target") == target), None)
+                if valid:
+                    clamped.append({"type": "defend", "target": target})
+            elif atype == "recruit":
+                target = act.get("target")
+                amount = act.get("amount", 0)
+                valid = next((a for a in valid_actions if a["type"] == "recruit" and a.get("target") == target), None)
+                if valid:
+                    amount = min(amount, valid.get("max_amount", amount))
+                    if amount > 0:
+                        clamped.append({"type": "recruit", "target": target, "amount": amount})
+            elif atype == "march":
+                from_c = act.get("from")
+                to = act.get("to")
+                troops = act.get("troops", 0)
+                valid = next((a for a in valid_actions if a["type"] == "march" and a.get("from") == from_c and a.get("to") == to), None)
+                if valid:
+                    troops = min(troops, valid.get("max_troops", troops))
+                    if troops > 0:
+                        clamped.append({"type": "march", "from": from_c, "to": to, "troops": troops})
+            elif atype == "diplomacy":
+                target = act.get("target")
+                valid = next((a for a in valid_actions if a["type"] == "diplomacy" and a.get("target") == target), None)
+                if valid:
+                    clamped.append({
+                        "type": "diplomacy",
+                        "target": target,
+                        "diplomacy_type": act.get("diplomacy_type", "message"),
+                        "message": act.get("message", ""),
+                    })
+
+        if not clamped:
+            # Fallback: defend first own city
+            your_cities = state.get("your_cities", [])
+            if your_cities:
+                clamped = [{"type": "defend", "target": your_cities[0]["name"]}]
+            else:
+                clamped = [{"type": "defend", "target": state.get("known_cities", [{}])[0].get("name", "洛阳")}]
+
+        submit_actions(session, game_id, agent, clamped, public_speech=public_speech)
+        return {"actions": clamped, "speech": public_speech}
+
+    except Exception as e:
+        print(f"[auto_decide_managed] Error for {agent.agent_name}({agent.faction}): {e}")
+        # Fallback: defend first own city
+        try:
+            cities = session.exec(select(City).where(City.game_id == game_id, City.owner == agent.faction)).all()
+            if cities:
+                submit_actions(session, game_id, agent, [{"type": "defend", "target": cities[0].name}])
+        except Exception:
+            pass
+        return None
+
+
+def pvp_maybe_advance(session: Session, game_id: int):
+    """Check if all agents have submitted for current tick. If so, auto-tick."""
+    game = session.get(Game, game_id)
+    if game is None or game.mode != "pvp":
+        return
+
+    if game.status == "finished":
+        return
+
+    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+    all_submitted = True
+    for a in agents:
+        existing = session.exec(
+            select(Action).where(
+                Action.game_id == game_id,
+                Action.agent_id == a.id,
+                Action.tick == game.tick,
+            )
+        ).first()
+        if existing is None:
+            all_submitted = False
+            break
+
+    if not all_submitted:
+        return
+
+    # All submitted — advance the tick
+    try:
+        result = tick(session, game_id)
+        print(f"[pvp_tick] Game #{game_id} tick {game.tick - 1} → {game.tick}")
+
+        # After tick, trigger managed agents to decide for the new tick
+        game = session.get(Game, game_id)
+        if game and game.status != "finished":
+            managed_agents = session.exec(
+                select(Agent).where(
+                    Agent.game_id == game_id,
+                    Agent.agent_mode == "managed",
+                )
+            ).all()
+            for ma in managed_agents:
+                auto_decide_managed(session, game_id, ma)
+
+        # Check win condition (max ticks)
+        if game and game.status != "finished" and game.tick >= game.max_ticks:
+            _resolve_max_ticks(session, game_id)
+    except ValueError as e:
+        print(f"[pvp_tick] Error advancing tick: {e}")
+
+
+def _resolve_max_ticks(session: Session, game_id: int):
+    """Resolve winner when max ticks reached — most cities wins."""
+    game = session.get(Game, game_id)
+    if game is None:
+        return
+    cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    faction_cities: dict[str, int] = defaultdict(int)
+    for c in cities:
+        if c.owner:
+            faction_cities[c.owner] += 1
+    if not faction_cities:
+        game.status = "finished"
+    else:
+        max_cities = max(faction_cities.values())
+        winners = [f for f, n in faction_cities.items() if n == max_cities]
+        if len(winners) == 1:
+            game.winner = winners[0]
+            game.status = "finished"
+        else:
+            # Tie: total troops
+            faction_troops: dict[str, int] = defaultdict(int)
+            for c in cities:
+                if c.owner:
+                    faction_troops[c.owner] += c.troops
+            winner = max(faction_troops, key=faction_troops.get)
+            game.winner = winner
+            game.status = "finished"
+    session.add(game)
+    session.commit()

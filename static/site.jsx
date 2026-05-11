@@ -13,6 +13,7 @@ function SiteNav({ tab, setTab, lang, setLang, theme }) {
     ["home", c("nav_home")],
     ["onboard", lang === "中" ? "接入" : "Connect"],
     ["docs", c("nav_docs")],
+    ["arena", lang === "中" ? "对战" : "Arena"],
     ["rules", lang === "中" ? "规则" : "Rules"],
     ["battles", c("nav_battles")],
     ["board", c("nav_board")],
@@ -438,6 +439,7 @@ function Site({ theme, defaultTab, defaultLang }) {
         {tab === "home"   && <HomeSection lang={lang} theme={theme} onCta={(t) => setTab(t)} />}
         {tab === "onboard" && <OnboardSection lang={lang} />}
         {tab === "docs"   && <DocsSection lang={lang} />}
+        {tab === "arena"  && <ArenaSection lang={lang} />}
         {tab === "rules"  && <RulesSection lang={lang} />}
         {tab === "battles" && (openedBattle
             ? <BattleDetail lang={lang} battleId={openedBattle} onBack={() => setOpenedBattle(null)} />

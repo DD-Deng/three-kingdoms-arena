@@ -335,6 +335,159 @@ async function apiCreateGame() {
   }
 }
 
+// ── PvP Arena API functions ──────────────────────────────────
+async function fetchLobby() {
+  try {
+    const resp = await fetch(apiUrl('/lobby'));
+    if (!resp.ok) throw new Error('API error');
+    const data = await resp.json();
+    return data.games || [];
+  } catch (e) {
+    console.error('fetchLobby error:', e);
+    return [];
+  }
+}
+
+async function createPvpGame(title, playerId, maxTicks) {
+  try {
+    const resp = await fetch(apiUrl('/games/create'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, player_id: playerId, max_ticks: maxTicks || 35 }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Create failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('createPvpGame error:', e);
+    return { error: 'Network error' };
+  }
+}
+
+async function joinManaged(gameId, playerId, agentName, faction, llmConfig, persona) {
+  try {
+    const resp = await fetch(apiUrl('/games/' + gameId + '/join-managed'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        player_id: playerId,
+        agent_name: agentName,
+        faction,
+        llm_config: llmConfig,
+        persona,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Join failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('joinManaged error:', e);
+    return { error: 'Network error' };
+  }
+}
+
+async function joinSelfHosted(gameId, agentId, secret, faction) {
+  try {
+    const resp = await fetch(apiUrl('/games/' + gameId + '/join-selfhosted'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agentId, secret, faction }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Join failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('joinSelfHosted error:', e);
+    return { error: 'Network error' };
+  }
+}
+
+async function startGame(gameId, token) {
+  try {
+    const resp = await fetch(apiUrl('/games/' + gameId + '/start'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Start failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('startGame error:', e);
+    return { error: 'Network error' };
+  }
+}
+
+async function fetchLiveGame(gameId) {
+  try {
+    const resp = await fetch(apiUrl('/games/' + gameId + '/live'));
+    if (!resp.ok) throw new Error('API error');
+    return await resp.json();
+  } catch (e) {
+    console.error('fetchLiveGame error:', e);
+    return null;
+  }
+}
+
+async function fetchMyGames(playerId) {
+  try {
+    const resp = await fetch(apiUrl('/my-games?player_id=' + encodeURIComponent(playerId)));
+    if (!resp.ok) throw new Error('API error');
+    const data = await resp.json();
+    return data.games || [];
+  } catch (e) {
+    console.error('fetchMyGames error:', e);
+    return [];
+  }
+}
+
+async function surrenderGame(gameId, token) {
+  try {
+    const resp = await fetch(apiUrl('/games/' + gameId + '/surrender'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Surrender failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('surrenderGame error:', e);
+    return { error: 'Network error' };
+  }
+}
+
+async function updateAgentConfig(gameId, token, persona, llmConfig) {
+  try {
+    const body = {};
+    if (persona) body.persona = persona;
+    if (llmConfig) body.llm_config = llmConfig;
+    const resp = await fetch(apiUrl('/games/' + gameId + '/agent/' + token + '/config'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Config update failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('updateAgentConfig error:', e);
+    return { error: 'Network error' };
+  }
+}
+
 async function apiJoinGame(gameId, agentId, secret, faction) {
   try {
     const resp = await fetch(apiUrl('/games/' + gameId + '/join'), {
@@ -407,6 +560,8 @@ Object.assign(window, {
   BATTLES_PLACEHOLDER, LEADERBOARD_PLACEHOLDER,
   fetchBattles, fetchBattleDetail, fetchLeaderboard,
   apiRegister, apiCreateGame, apiJoinGame,
+  fetchLobby, createPvpGame, joinManaged, joinSelfHosted, startGame,
+  fetchLiveGame, fetchMyGames, surrenderGame, updateAgentConfig,
   apiUrl, formatTime,
   t,
 });
