@@ -17,12 +17,17 @@ function ArenaSection({ lang }) {
 
   // localStorage helpers
   const getPid = () => typeof localStorage !== 'undefined' ? localStorage.getItem('tka_player_id') || '' : '';
-  const setPid = (v) => localStorage && localStorage.setItem('tka_player_id', v);
+  const setPid = (v) => { try { if (typeof localStorage !== 'undefined') localStorage.setItem('tka_player_id', v); } catch(e) {} };
+  const parseStoredTokens = () => {
+    try { return JSON.parse((typeof localStorage !== 'undefined' ? localStorage.getItem('tka_game_tokens') : null) || '{}'); } catch(e) { return {}; }
+  };
   const saveToken = (gid, tok, fac) => {
-    if (!localStorage) return;
-    const data = JSON.parse(localStorage.getItem('tka_game_tokens') || '{}');
-    data[gid] = { token: tok, faction: fac };
-    localStorage.setItem('tka_game_tokens', JSON.stringify(data));
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const data = parseStoredTokens();
+      data[gid] = { token: tok, faction: fac };
+      localStorage.setItem('tka_game_tokens', JSON.stringify(data));
+    } catch(e) {}
   };
 
   // ── Lobby ─────────────────────────────────────────────
@@ -34,6 +39,10 @@ function ArenaSection({ lang }) {
     fetchLobby().then(games => {
       setLobbyGames(games || []);
       setLobbyLoading(false);
+    }).catch(err => {
+      setLobbyGames([]);
+      setLobbyLoading(false);
+      setError(lang === '中' ? '加载大厅失败: ' + (err?.message || err) : 'Failed to load lobby: ' + (err?.message || err));
     });
   };
 
@@ -56,18 +65,23 @@ function ArenaSection({ lang }) {
     if (!cfAgentName.trim()) { setError(lang === '中' ? '请输入 Agent 名称' : 'Please enter agent name'); return; }
     if (!cfFaction) { setError(lang === '中' ? '请选择势力' : 'Please select a faction'); return; }
     setLoading(true); setError('');
-    const pid = getPid();
-    const result = await createPvpGame(cfTitle.trim(), pid || undefined, 35);
-    setLoading(false);
-    if (result && result.game_id) {
-      if (result.player_id) setPid(result.player_id);
-      setGameId(result.game_id);
-      setToken(result.token);
-      setFaction(cfFaction);
-      saveToken(result.game_id, result.token, cfFaction);
-      setSubPage('room');
-    } else {
-      setError(result?.error || 'Create failed');
+    try {
+      const pid = getPid();
+      const result = await createPvpGame(cfTitle.trim(), pid || undefined, 35);
+      setLoading(false);
+      if (result && result.game_id) {
+        if (result.player_id) setPid(result.player_id);
+        setGameId(result.game_id);
+        setToken(result.token);
+        setFaction(cfFaction);
+        saveToken(result.game_id, result.token, cfFaction);
+        setSubPage('room');
+      } else {
+        setError(result?.error || 'Create failed');
+      }
+    } catch(err) {
+      setLoading(false);
+      setError(lang === '中' ? '创建失败: ' + (err?.message || err) : 'Create failed: ' + (err?.message || err));
     }
   };
 
@@ -95,43 +109,48 @@ function ArenaSection({ lang }) {
   const doJoin = async () => {
     if (!jfFaction) { setError(lang === '中' ? '请选择势力' : 'Please select a faction'); return; }
     setLoading(true); setError(''); setJoinResult(null);
-    const pid = getPid();
+    try {
+      const pid = getPid();
 
-    if (joinMode === 'managed') {
-      if (!jfAgentName.trim()) { setError(lang === '中' ? '请输入 Agent 名称' : 'Please enter agent name'); setLoading(false); return; }
-      let llmConfig = null;
-      if (jfProvider !== 'mock') {
-        llmConfig = { provider: jfProvider, model: jfModel };
-        if (jfApiKey) llmConfig.api_key = jfApiKey;
+      if (joinMode === 'managed') {
+        if (!jfAgentName.trim()) { setError(lang === '中' ? '请输入 Agent 名称' : 'Please enter agent name'); setLoading(false); return; }
+        let llmConfig = null;
+        if (jfProvider !== 'mock') {
+          llmConfig = { provider: jfProvider, model: jfModel };
+          if (jfApiKey) llmConfig.api_key = jfApiKey;
+        } else {
+          llmConfig = { provider: 'mock' };
+        }
+        const result = await joinManaged(joinGid, pid || undefined, jfAgentName.trim(), jfFaction, llmConfig, jfPersona || undefined);
+        setLoading(false);
+        if (result && result.token) {
+          setGameId(result.game_id);
+          setToken(result.token);
+          setFaction(result.faction);
+          saveToken(result.game_id, result.token, result.faction);
+          setJoinGid(null);
+          setSubPage('room');
+        } else {
+          setError(result?.error || 'Join failed');
+        }
       } else {
-        llmConfig = { provider: 'mock' };
+        if (!jfAgentId.trim() || !jfSecret.trim()) {
+          setError(lang === '中' ? '请输入 agent_id 和 secret' : 'Please enter agent_id and secret');
+          setLoading(false); return;
+        }
+        const result = await joinSelfHosted(joinGid, jfAgentId.trim(), jfSecret.trim(), jfFaction);
+        setLoading(false);
+        if (result && result.token) {
+          setJoinResult(result);
+          setToken(result.token);
+          saveToken(joinGid, result.token, jfFaction);
+        } else {
+          setError(result?.error || 'Join failed');
+        }
       }
-      const result = await joinManaged(joinGid, pid || undefined, jfAgentName.trim(), jfFaction, llmConfig, jfPersona || undefined);
+    } catch(err) {
       setLoading(false);
-      if (result && result.token) {
-        setGameId(result.game_id);
-        setToken(result.token);
-        setFaction(result.faction);
-        saveToken(result.game_id, result.token, result.faction);
-        setJoinGid(null);
-        setSubPage('room');
-      } else {
-        setError(result?.error || 'Join failed');
-      }
-    } else {
-      if (!jfAgentId.trim() || !jfSecret.trim()) {
-        setError(lang === '中' ? '请输入 agent_id 和 secret' : 'Please enter agent_id and secret');
-        setLoading(false); return;
-      }
-      const result = await joinSelfHosted(joinGid, jfAgentId.trim(), jfSecret.trim(), jfFaction);
-      setLoading(false);
-      if (result && result.token) {
-        setJoinResult(result);
-        setToken(result.token);
-        saveToken(joinGid, result.token, jfFaction);
-      } else {
-        setError(result?.error || 'Join failed');
-      }
+      setError(lang === '中' ? '加入失败: ' + (err?.message || err) : 'Join failed: ' + (err?.message || err));
     }
   };
 
@@ -146,6 +165,10 @@ function ArenaSection({ lang }) {
       fetchMyGames(pid).then(games => {
         setMyGames(games || []);
         setMyGamesLoading(false);
+      }).catch(err => {
+        setMyGames([]);
+        setMyGamesLoading(false);
+        setError(lang === '中' ? '加载我的对局失败' : 'Failed to load my games');
       });
     } else {
       setMyGames([]);
@@ -158,8 +181,7 @@ function ArenaSection({ lang }) {
   }, [subPage]);
 
   const openMyGame = (gid) => {
-    let data = {};
-    try { data = JSON.parse((typeof localStorage !== 'undefined' ? localStorage.getItem('tka_game_tokens') : null) || '{}'); } catch(e) {}
+    const data = parseStoredTokens();
     const entry = data[gid];
     setGameId(gid);
     setToken(entry?.token || '');
@@ -175,7 +197,7 @@ function ArenaSection({ lang }) {
     const poll = () => {
       fetchLiveGame(gameId).then(data => {
         if (data) setLiveState(data);
-      });
+      }).catch(() => {});
     };
     poll();
     const iv = setInterval(poll, 2000);
@@ -185,17 +207,27 @@ function ArenaSection({ lang }) {
   const doStartGame = async () => {
     if (!token) return;
     setLoading(true); setError('');
-    const result = await startGame(gameId, token);
-    setLoading(false);
-    if (result && result.error) setError(result.error);
+    try {
+      const result = await startGame(gameId, token);
+      setLoading(false);
+      if (result && result.error) setError(result.error);
+    } catch(err) {
+      setLoading(false);
+      setError(lang === '中' ? '开始对局失败' : 'Failed to start game');
+    }
   };
 
   const doSurrender = async () => {
     if (!token) return;
     setLoading(true);
-    const result = await surrenderGame(gameId, token);
-    setLoading(false);
-    if (result && result.error) setError(result.error);
+    try {
+      const result = await surrenderGame(gameId, token);
+      setLoading(false);
+      if (result && result.error) setError(result.error);
+    } catch(err) {
+      setLoading(false);
+      setError(lang === '中' ? '投降失败' : 'Failed to surrender');
+    }
   };
 
   // ── LLM Provider options ──────────────────────────────
@@ -361,11 +393,8 @@ function ArenaSection({ lang }) {
     const ls = liveState;
     const status = ls?.status || 'waiting';
     const statusLabel = { waiting: lang === '中' ? '等待中' : 'Waiting', active: lang === '中' ? '进行中' : 'Active', finished: lang === '中' ? '已结束' : 'Finished' }[status] || status;
-    const isHost = ls?.agents && token && ls.agents.some(a => {
-      let data = {};
-      try { data = JSON.parse((typeof localStorage !== 'undefined' ? localStorage.getItem('tka_game_tokens') : null) || '{}'); } catch(e) {}
-      return a.faction === (data[gameId]?.faction || '');
-    });
+    const storedTokens = parseStoredTokens();
+    const isHost = ls?.agents && token && ls.agents.some(a => a.faction === (storedTokens[gameId]?.faction || ''));
 
     return React.createElement('section', { className: 'arena' },
       React.createElement('div', { className: 'docs-head' },
@@ -401,6 +430,49 @@ function ArenaSection({ lang }) {
       error && React.createElement('div', {
         style: { color: 'var(--accent)', padding: '10px 16px', background: 'rgba(179,66,55,0.1)', border: '1px solid var(--accent)', marginBottom: 16, fontSize: 13 }
       }, error),
+
+      // ── Invite friends section (shown while waiting) ──
+      status === 'waiting' && React.createElement('div', { style: {
+        background: 'var(--panel)', border: '1px solid var(--gold-dim)', padding: 16,
+        marginBottom: 8, marginTop: 16,
+      }},
+        React.createElement('div', { style: { color: 'var(--gold)', fontWeight: 600, fontSize: 14, marginBottom: 12 } },
+          lang === '中' ? '邀请朋友' : 'Invite Friends'),
+        React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 11, marginBottom: 8 } },
+          lang === '中' ? '朋友可以用任意名称和未占用的势力一键加入' : 'Friends can join with any name and available faction'),
+        // Quick-join URL
+        React.createElement('div', { style: { marginBottom: 8 } },
+          React.createElement('div', { style: { color: 'var(--ink-mute)', fontSize: 10, marginBottom: 2 } },
+            lang === '中' ? '快速加入链接:' : 'Quick-join URL:'),
+          React.createElement('div', { style: { display: 'flex', gap: 6 } },
+            React.createElement('code', { style: {
+              flex: 1, background: 'var(--bg)', padding: '6px 10px', fontSize: 11,
+              color: 'var(--gold-dim)', overflow: 'auto', whiteSpace: 'nowrap',
+              border: '1px solid var(--line)', fontFamily: 'var(--font-mono)',
+            } }, (window.location.origin || '') + '/join/' + gameId),
+            React.createElement('button', {
+              className: 'btn-ghost btn-sm',
+              onClick: () => { try { navigator.clipboard.writeText((window.location.origin || '') + '/join/' + gameId); } catch(e) {} },
+            }, lang === '中' ? '复制' : 'Copy'),
+          )
+        ),
+        // Curl example
+        React.createElement('div', null,
+          React.createElement('div', { style: { color: 'var(--ink-mute)', fontSize: 10, marginBottom: 2 } },
+            lang === '中' ? '或通过 curl 加入:' : 'Or join via curl:'),
+          React.createElement('div', { style: { display: 'flex', gap: 6 } },
+            React.createElement('code', { style: {
+              flex: 1, background: 'var(--bg)', padding: '6px 10px', fontSize: 11,
+              color: 'var(--gold-dim)', overflow: 'auto', whiteSpace: 'nowrap',
+              border: '1px solid var(--line)', fontFamily: 'var(--font-mono)',
+            } }, "curl -s -X POST \"" + (window.location.origin || 'http://localhost:8000') + '/join/' + gameId + "\" -H \"Content-Type: application/json\" -d '{\"name\":\"关羽\",\"faction\":\"蜀\"}'"),
+            React.createElement('button', {
+              className: 'btn-ghost btn-sm',
+              onClick: () => { try { navigator.clipboard.writeText("curl -s -X POST \"" + (window.location.origin || 'http://localhost:8000') + '/join/' + gameId + "\" -H \"Content-Type: application/json\" -d '{\"name\":\"关羽\",\"faction\":\"蜀\"}'"); } catch(e) {} },
+            }, lang === '中' ? '复制' : 'Copy'),
+          )
+        ),
+      ),
 
       // Waiting — start button for host
       status === 'waiting' && React.createElement('div', { style: { textAlign: 'center', padding: 20 } },

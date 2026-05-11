@@ -1493,6 +1493,43 @@ def pvp_join_selfhosted(
     return agent.token, game_id
 
 
+def quick_join(session: Session, game_id: int, name: str, faction: str, base_url: str = "") -> tuple:
+    """One-click quick join: auto-register player + agent + join as self_hosted.
+
+    Returns (token, faction, game_id, curl_state, curl_action).
+    """
+    # Auto-create Player
+    player = Player()
+    session.add(player)
+    session.flush()
+
+    # Auto-register RegisteredAgent
+    reg = RegisteredAgent(
+        player_id=player.player_id,
+        agent_name=name,
+    )
+    session.add(reg)
+    session.flush()
+
+    # Join as self_hosted
+    token, gid = pvp_join_selfhosted(session, game_id, reg.agent_id, reg.secret, faction)
+
+    # Build copy-paste-ready curl commands
+    if not base_url:
+        base_url = os.environ.get("BASE_URL", "http://localhost:8000")
+
+    curl_state = (
+        f'curl -s "{base_url}/games/{gid}/state?token={token}"'
+    )
+    curl_action = (
+        f'curl -s -X POST "{base_url}/games/{gid}/actions?token={token}" '
+        f'-H "Content-Type: application/json" '
+        f'-d \'{{"actions":[{{"type":"defend","target":"成都"}}],"public_speech":"稳守！"}}\''
+    )
+
+    return token, faction, gid, curl_state, curl_action
+
+
 def pvp_start_game(session: Session, game_id: int, token: str) -> dict:
     """Start a PvP game. Token must belong to the host agent."""
     game = session.get(Game, game_id)

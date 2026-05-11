@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI, Depends, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -599,6 +600,27 @@ def pvp_join_selfhosted(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"token": token, "game_id": gid, "agent_id": body["agent_id"]}
+
+
+@app.post("/join/{game_id}")
+def quick_join(
+    game_id: int,
+    body: dict,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    host = request.headers.get("host", "")
+    base_url = f"http://{host}" if host else os.environ.get("BASE_URL", "http://localhost:8000")
+    try:
+        token, faction, gid, curl_state, curl_action = eng.quick_join(
+            session, game_id, body["name"], body["faction"], base_url=base_url
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "token": token, "faction": faction, "game_id": gid,
+        "curl_state": curl_state, "curl_action": curl_action,
+    }
 
 
 @app.put("/games/{game_id}/agent/{token}/config")
