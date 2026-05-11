@@ -1,6 +1,13 @@
 // ── Arena Lobby & Room ──────────────────────────────────────
 function ArenaSection({ lang }) {
   const c = React.useCallback((k) => t(k, lang), [lang]);
+
+  const inputStyle = {
+    background: 'var(--bg)', border: '1px solid var(--line)',
+    color: 'var(--ink)', padding: '8px 12px', fontSize: 13,
+    fontFamily: 'var(--font-mono)', width: '100%', boxSizing: 'border-box',
+  };
+
   const [subPage, setSubPage] = React.useState('lobby');
   const [gameId, setGameId] = React.useState(null);
   const [token, setToken] = React.useState('');
@@ -151,7 +158,8 @@ function ArenaSection({ lang }) {
   }, [subPage]);
 
   const openMyGame = (gid) => {
-    const data = JSON.parse(localStorage.getItem('tka_game_tokens') || '{}');
+    let data = {};
+    try { data = JSON.parse((typeof localStorage !== 'undefined' ? localStorage.getItem('tka_game_tokens') : null) || '{}'); } catch(e) {}
     const entry = data[gid];
     setGameId(gid);
     setToken(entry?.token || '');
@@ -354,7 +362,8 @@ function ArenaSection({ lang }) {
     const status = ls?.status || 'waiting';
     const statusLabel = { waiting: lang === '中' ? '等待中' : 'Waiting', active: lang === '中' ? '进行中' : 'Active', finished: lang === '中' ? '已结束' : 'Finished' }[status] || status;
     const isHost = ls?.agents && token && ls.agents.some(a => {
-      const data = JSON.parse(localStorage.getItem('tka_game_tokens') || '{}');
+      let data = {};
+      try { data = JSON.parse((typeof localStorage !== 'undefined' ? localStorage.getItem('tka_game_tokens') : null) || '{}'); } catch(e) {}
       return a.faction === (data[gameId]?.faction || '');
     });
 

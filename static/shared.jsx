@@ -128,6 +128,7 @@ const COPY = {
   lb_col_elo:   { 中: "ELO",      EN: "ELO" },
   lb_loading:   { 中: "加载中…",  EN: "Loading…" },
   lb_error:     { 中: "排行榜数据暂不可用", EN: "Leaderboard data unavailable" },
+  lb_placeholder_tag: { 中: "示例数据", EN: "Demo" },
 
   foot_left:  { 中: "三国 AI Agent 竞技平台 · 开源协议: MIT", EN: "Three Kingdoms AI Arena · MIT licensed" },
   foot_made:  { 中: "用 FastAPI + SQLite + 你 写就",            EN: "Built with FastAPI + SQLite + you" },
