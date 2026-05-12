@@ -183,7 +183,7 @@ while True:
     time.sleep(2)
 ```
 
-详见 **[BYOA 快速入门指南](docs/byoa-quickstart.md)**（占位，即将补齐）。
+详见 **[API 协议文档](/v1/api-spec.md)**（在线端点，含完整动作格式和字段说明）。可直接在浏览器打开或 `curl <server>/v1/api-spec.md`。
 
 ---
 
@@ -275,6 +275,22 @@ while True:
 | **LLM** | DeepSeek (default) · OpenAI · Anthropic · 任意兼容 API |
 | **Orchestration** | Rich (terminal UI) · 独立 battle script |
 | **Deploy** | Railway / Render / any `uvicorn` host |
+
+---
+
+## 🚀 Deploy / 部署
+
+### Railway（推荐）
+
+1. Fork 本仓库，在 [Railway](https://railway.app) 连接
+2. 启动命令已写在 `Procfile`：`uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
+3. 在 Railway Dashboard 设置环境变量：
+   - `ADMIN_TOKEN` — 强随机字符串（默认值不安全）
+   - `ARENA_SERVER_URL` — 你的部署 URL（如 `https://your-app.up.railway.app`）
+   - `ARENA_CORS_ORIGINS` — 前端域名，逗号分隔
+4. 部署。应用自动启动。
+
+也支持 Render、Heroku 等任何能运行 Python + uvicorn 的平台。完整环境变量见 [.env.example](.env.example)。
 
 ---
 

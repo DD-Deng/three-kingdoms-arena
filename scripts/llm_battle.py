@@ -174,7 +174,7 @@ class BattleOrchestrator:
                 time.sleep(self.tick_interval)
 
                 r = httpx.post(
-                    f"{self.server}/games/{self.game_id}/tick", timeout=10)
+                    f"{self.server}/games/{self.game_id}/tick?token=admin-dev-token", timeout=10)
                 result = r.json()
 
                 # 记录 tick 数据

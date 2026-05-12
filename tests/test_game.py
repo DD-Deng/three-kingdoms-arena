@@ -42,7 +42,7 @@ def _submit(token: str, game_id: int, actions: list[dict],
 
 
 def _tick(game_id: int):
-    return client.post(f"/games/{game_id}/tick")
+    return client.post(f"/games/{game_id}/tick?token=admin-dev-token")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -135,7 +135,7 @@ def test_grain_increases_per_tick():
     assert r.json()["your_resources"]["grain"] == 500  # 蜀初始 500
 
     for _ in range(3):
-        client.post(f"/games/{gid}/tick")
+        _tick(gid)
 
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     # 蜀 2 城 × 80 × 3 ticks = 480 收入

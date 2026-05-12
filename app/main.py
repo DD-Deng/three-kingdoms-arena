@@ -1,5 +1,12 @@
 from contextlib import asynccontextmanager
 import os
+import logging
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from fastapi import FastAPI, Depends, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +15,10 @@ from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 from pathlib import Path
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from .limiter import limiter
 from .database import init_db, get_session
 from .models import Agent, BattleHistory, BattleLogFile
 from . import engine as eng
@@ -27,19 +38,43 @@ templates.env.cache = None
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     init_db()
+    if os.environ.get("ADMIN_TOKEN", "admin-dev-token") == "admin-dev-token":
+        logging.warning("ADMIN_TOKEN is using default value 'admin-dev-token'. Set a strong random token for production.")
     yield
 
 
 app = FastAPI(title="三国 AI Agent 竞技平台", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — allow GitHub Pages and other frontend origins to call the API
+# CORS — configure via ARENA_CORS_ORIGINS env var (comma-separated, or "*" for wide open)
+_cors_raw = os.environ.get("ARENA_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000")
+if _cors_raw.strip() == "*":
+    _cors_origins = ["*"]
+    _cors_credentials = False
+else:
+    _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    _cors_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    if request.headers.get("X-Forwarded-Proto", "") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 
 # 注册 API 路由
 app.include_router(admin_router)
@@ -172,20 +207,8 @@ async def submit_actions(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ── POST /games/{game_id}/tick ─────────────────────────────
-@app.post("/games/{game_id}/tick")
-def tick_game(
-    game_id: int,
-    session: Session = Depends(get_session),
-):
-    try:
-        return eng.tick(session, game_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 # ═══════════════════════════════════════════════════════════════
-# 运营后台页面
+# Admin auth helper
 # ═══════════════════════════════════════════════════════════════
 
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "admin-dev-token")
@@ -196,6 +219,19 @@ def _check_admin(request: Request):
     if token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="未授权")
     return token
+
+
+# ── POST /games/{game_id}/tick ─────────────────────────────
+@app.post("/games/{game_id}/tick")
+def tick_game(
+    game_id: int,
+    session: Session = Depends(get_session),
+    _: str = Depends(_check_admin),
+):
+    try:
+        return eng.tick(session, game_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/admin")

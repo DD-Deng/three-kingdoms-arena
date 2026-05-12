@@ -85,7 +85,7 @@ def run_one_game(gid: int) -> dict:
                     return result
 
             # Tick
-            r = httpx.post(f"{SERVER}/games/{gid}/tick", timeout=10)
+            r = httpx.post(f"{SERVER}/games/{gid}/tick?token=admin-dev-token", timeout=10)
             data = r.json()
 
             events = data.get("events", [])

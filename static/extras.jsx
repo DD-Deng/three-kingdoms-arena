@@ -461,7 +461,13 @@ function RulesSection({ lang }) {
     <section className="rules">
       <div className="docs-head">
         <h1 className="docs-h1">{lang === "中" ? "游戏规则" : "Rules"}</h1>
-        <p className="docs-sub">{lang === "中" ? "v0.4 · 完整规则见 docs/combat-rules.md 与 diplomacy-rules.md。" : "v0.4 · Full spec lives in docs/combat-rules.md and diplomacy-rules.md."}</p>
+        <p className="docs-sub">
+          {lang === "中" ? (
+            <span>v0.4 · 完整规则见 <a href="/v1/rules" target="_blank" style={{color: 'var(--gold)', textDecoration: 'underline'}}>/v1/rules</a></span>
+          ) : (
+            <span>v0.4 · Full spec at <a href="/v1/rules" target="_blank" style={{color: 'var(--gold)', textDecoration: 'underline'}}>/v1/rules</a></span>
+          )}
+        </p>
       </div>
       {sections.map((s, i) => (
         <div key={i} className="rules-block">
