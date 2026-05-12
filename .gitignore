@@ -1,10 +1,28 @@
+# Environment & secrets
+.env
+.arena_credentials/
+
+# Python
 __pycache__/
 *.pyc
-.venv/
 *.db
+*.sqlite
 .pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Logs
 logs/
+*.log
+
+# OS
+.DS_Store
+
+# IDE
 .vscode/
+
+# Temporary files
 integration_prompt.txt
 scripts/debug_one.py
 scripts/live_battle.py
