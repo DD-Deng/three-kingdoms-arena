@@ -179,7 +179,7 @@ def tick_game(
 # 运营后台页面
 # ═══════════════════════════════════════════════════════════════
 
-ADMIN_TOKEN = __import__("os").environ.get("ADMIN_TOKEN", "admin-dev-token")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "admin-dev-token")
 
 
 def _check_admin(request: Request):

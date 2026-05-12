@@ -2087,6 +2087,7 @@ def current_game_state(session: Session) -> dict:
 
     # Check submitted status for each agent
     agent_info = []
+    default_names = [MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL]
     for a in agents:
         existing = session.exec(
             select(Action).where(
@@ -2101,6 +2102,7 @@ def current_game_state(session: Session) -> dict:
             "faction": a.faction,
             "mode": a.agent_mode,
             "submitted": existing is not None,
+            "is_player": a.agent_name not in default_names,
         })
 
     # Read resources for alliance info

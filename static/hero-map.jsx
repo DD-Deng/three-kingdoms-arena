@@ -176,15 +176,9 @@ function HeroMap({ theme, lang, cities, events, diplomacy, tick, status, winner,
               : e.defended_by + " defended " + e.city);
             kind = "🛡";
             faction = e.defended_by;
-          } else if (e.type === "recruit") {
-            text = e.faction + " 在 " + e.city + " 招募";
-            kind = "📋";
-            faction = e.faction;
-          } else if (e.type === "march") {
-            text = e.faction + " 行军 " + (e.from || "") + "→" + (e.to || "");
-            kind = "🚶";
-            faction = e.faction;
-          } else { return null; }
+          } else {
+            return null;
+          }
           const fc = (FACTIONS[faction] || {}).color || "var(--ink-mute)";
           return (
             <div key={"e" + i} className="hm-log-row" style={{ "--ec": fc }}>

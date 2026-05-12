@@ -60,7 +60,7 @@ function HomeSection({ lang, theme, currentGame }) {
 
   const g = currentGame;
   const cityCount = (g && g.cities) ? g.cities.length : 7;
-  const filledSlots = (g && g.agents) ? g.agents.length : 0;
+  const filledSlots = (g && g.agents) ? g.agents.filter(a => a.is_player).length : 0;
 
   const doJoin = async () => {
     if (!joinFaction) { setJoinError(lang === '中' ? '请选择势力' : 'Pick a faction'); return; }
@@ -128,7 +128,8 @@ function HomeSection({ lang, theme, currentGame }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                     {Object.entries(FACTIONS).map(([k, f]) => {
-                      const isFilled = g && g.agents && g.agents.some(a => a.faction === k);
+                      const agent = g && g.agents && g.agents.find(a => a.faction === k);
+                      const isFilled = agent && agent.is_player;
                       return (
                         <button key={k} className="btn-ghost btn-sm"
                           disabled={isFilled}
