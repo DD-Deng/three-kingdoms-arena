@@ -1318,10 +1318,16 @@ def pvp_create_game(
     session: Session,
     title: str | None = None,
     player_id: str | None = None,
+    host_name: str = "房主",
+    host_faction: str | None = None,
+    host_persona: str | None = None,
     max_ticks: int = 35,
     tick_timeout_sec: int = 60,
-) -> tuple[int, int, str, str]:  # (game_id, agent_id, token, secret)
-    """Create a PvP game + auto-register a host agent."""
+) -> dict:
+    """Create a PvP game + auto-register a host agent.
+
+    Returns dict with game_id, agent_id, token, secret, player_id, faction, invite_url.
+    """
     # Create the game
     game = Game(
         mode="pvp",
@@ -1366,19 +1372,23 @@ def pvp_create_game(
 
     reg = RegisteredAgent(
         player_id=player_id,
-        agent_name="房主",
+        agent_name=host_name,
     )
     session.add(reg)
     session.flush()
 
-    # Host joins as managed agent with first available faction
-    host_faction = FACTION_POOL[0]
+    # Host chooses faction, defaults to first available
+    faction = host_faction or FACTION_POOL[0]
+    if faction not in FACTION_POOL:
+        faction = FACTION_POOL[0]
+
     agent = Agent(
         game_id=game.id,
         registered_agent_id=reg.agent_id,
-        agent_name=reg.agent_name,
-        faction=host_faction,
+        agent_name=host_name,
+        faction=faction,
         agent_mode="managed",
+        persona_config=host_persona,
     )
     session.add(agent)
     session.flush()
@@ -1388,7 +1398,29 @@ def pvp_create_game(
     session.commit()
     session.refresh(agent)
 
-    return game.id, reg.agent_id, agent.token, reg.secret
+    # Build invite URL — auto-detect Railway/Render/Heroku domain
+    base_url = os.environ.get("BASE_URL")
+    if not base_url:
+        railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        render_domain = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
+        if railway_domain:
+            base_url = f"https://{railway_domain}"
+        elif render_domain:
+            base_url = f"https://{render_domain}"
+        else:
+            base_url = "http://localhost:8000"
+    invite_url = f"{base_url}/?tab=arena&join={game.id}"
+
+    return {
+        "game_id": game.id,
+        "agent_id": reg.agent_id,
+        "token": agent.token,
+        "secret": reg.secret,
+        "player_id": player_id,
+        "faction": faction,
+        "invite_url": invite_url,
+        "invite_code": str(game.id),
+    }
 
 
 def pvp_join_managed(
@@ -1685,26 +1717,45 @@ def live_game_state(session: Session, game_id: int) -> dict:
 
 
 def _build_llm_provider(agent: Agent):
-    """Build an LLM provider from the agent's llm_config."""
+    """Build an LLM provider from the agent's llm_config.
+
+    Priority:
+    1. agent.llm_config (explicit per-agent config)
+    2. Environment variables (DEFAULT_LLM_PROVIDER, LLM_API_KEY)
+    3. Fallback to mock provider
+    """
     llm_config = json.loads(agent.llm_config) if agent.llm_config else {}
-    provider_name = llm_config.get("provider", "mock")
-    api_key = llm_config.get("api_key") or os.environ.get("LLM_API_KEY", "")
+    provider_name = llm_config.get("provider") or os.environ.get("DEFAULT_LLM_PROVIDER", "mock")
+
+    api_key = (
+        llm_config.get("api_key")
+        or os.environ.get("LLM_API_KEY", "")
+        or os.environ.get("DEEPSEEK_API_KEY", "")
+        or os.environ.get("OPENAI_API_KEY", "")
+        or os.environ.get("ANTHROPIC_API_KEY", "")
+    )
     base_url = llm_config.get("base_url")
 
     if provider_name == "mock":
         from agents.llm_agent import MockProvider
         return MockProvider()
-    elif provider_name in ("openai", "deepseek"):
+    elif provider_name == "deepseek":
         from agents.llm_agent import OpenAICompatProvider
-        model = llm_config.get("model", "deepseek-chat" if provider_name == "deepseek" else "gpt-4o")
+        model = llm_config.get("model") or os.environ.get("DEFAULT_LLM_MODEL", "deepseek-chat")
+        ds_base = base_url or "https://api.deepseek.com"
+        return OpenAICompatProvider(model=model, api_key=api_key, base_url=ds_base)
+    elif provider_name in ("openai", "gpt"):
+        from agents.llm_agent import OpenAICompatProvider
+        model = llm_config.get("model") or os.environ.get("DEFAULT_LLM_MODEL", "gpt-4o")
         return OpenAICompatProvider(model=model, api_key=api_key, base_url=base_url)
-    elif provider_name == "claude":
+    elif provider_name in ("claude", "anthropic"):
         from agents.llm_agent import AnthropicProvider
-        model = llm_config.get("model", "claude-sonnet-4-6-20250514")
+        model = llm_config.get("model") or os.environ.get("DEFAULT_LLM_MODEL", "claude-sonnet-4-6-20250514")
         return AnthropicProvider(model=model, api_key=api_key)
     else:
-        from agents.llm_agent import MockProvider
-        return MockProvider()
+        from agents.llm_agent import OpenAICompatProvider
+        model = llm_config.get("model") or os.environ.get("DEFAULT_LLM_MODEL", "gpt-4o")
+        return OpenAICompatProvider(model=model, api_key=api_key, base_url=base_url)
 
 
 def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | None:

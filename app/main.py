@@ -552,16 +552,19 @@ def lobby_list(session: Session = Depends(get_session)):
 @app.post("/games/create")
 def pvp_create_game(body: dict, session: Session = Depends(get_session)):
     try:
-        gid, agent_id, token, secret = eng.pvp_create_game(
+        result = eng.pvp_create_game(
             session,
             title=body.get("title"),
             player_id=body.get("player_id"),
+            host_name=body.get("agent_name", "房主"),
+            host_faction=body.get("faction"),
+            host_persona=body.get("persona"),
             max_ticks=body.get("max_ticks", 35),
             tick_timeout_sec=body.get("tick_timeout_sec", 60),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"game_id": gid, "agent_id": agent_id, "token": token, "secret": secret}
+    return result
 
 
 @app.post("/games/{game_id}/join-managed")
@@ -609,18 +612,48 @@ def quick_join(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """One-click join: auto-register + auto-join as managed agent.
+    No API keys needed — server uses default LLM provider."""
     host = request.headers.get("host", "")
     base_url = f"http://{host}" if host else os.environ.get("BASE_URL", "http://localhost:8000")
+
+    # Managed mode (default): server handles LLM for the agent
+    mode = body.get("mode", "managed")
+    name = body.get("name", "神秘武将")
+    faction = body.get("faction")
+
+    if not faction or faction not in ["蜀", "魏", "吴"]:
+        raise HTTPException(status_code=400, detail="faction must be 蜀/魏/吴")
+
     try:
-        token, faction, gid, curl_state, curl_action = eng.quick_join(
-            session, game_id, body["name"], body["faction"], base_url=base_url
-        )
+        if mode == "self_hosted":
+            # Legacy self-hosted path
+            token, faction, gid, curl_state, curl_action = eng.quick_join(
+                session, game_id, name, faction, base_url=base_url
+            )
+            return {
+                "token": token, "faction": faction, "game_id": gid,
+                "curl_state": curl_state, "curl_action": curl_action,
+                "mode": "self_hosted",
+            }
+        else:
+            # Managed mode: server handles decisions
+            token, faction, gid = eng.pvp_join_managed(
+                session, game_id,
+                player_id=body.get("player_id"),
+                agent_name=name,
+                faction=faction,
+                llm_config=body.get("llm_config"),  # optional
+                persona=body.get("persona"),         # optional
+            )
+            invite_url = f"{base_url}/?tab=arena&join={gid}"
+            return {
+                "token": token, "faction": faction, "game_id": gid,
+                "mode": "managed",
+                "invite_url": invite_url,
+            }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {
-        "token": token, "faction": faction, "game_id": gid,
-        "curl_state": curl_state, "curl_action": curl_action,
-    }
 
 
 @app.put("/games/{game_id}/agent/{token}/config")

@@ -430,7 +430,21 @@ function Site({ theme, defaultTab, defaultLang }) {
   const [tab, setTab] = React.useState(defaultTab || "home");
   const [lang, setLang] = React.useState(defaultLang || "中");
   const [openedBattle, setOpenedBattle] = React.useState(null);
+  const [arenaJoinId, setArenaJoinId] = React.useState(null);
   const c = useCopy(lang);
+
+  // Read URL params on mount: ?tab=arena&join=123
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlTab = params.get('tab');
+      const joinId = params.get('join');
+      if (urlTab) setTab(urlTab);
+      if (urlTab === 'arena' && joinId) {
+        setArenaJoinId(parseInt(joinId) || null);
+      }
+    } catch(e) {}
+  }, []);
 
   return (
     <div className={'site theme-' + theme} data-screen-label={'Site (' + theme + ')'}>
@@ -439,7 +453,7 @@ function Site({ theme, defaultTab, defaultLang }) {
         {tab === "home"   && <HomeSection lang={lang} theme={theme} onCta={(t) => setTab(t)} />}
         {tab === "onboard" && <OnboardSection lang={lang} />}
         {tab === "docs"   && <DocsSection lang={lang} />}
-        {tab === "arena"  && <ArenaSection lang={lang} />}
+        {tab === "arena"  && <ArenaSection lang={lang} joinGameId={arenaJoinId} />}
         {tab === "rules"  && <RulesSection lang={lang} />}
         {tab === "battles" && (openedBattle
             ? <BattleDetail lang={lang} battleId={openedBattle} onBack={() => setOpenedBattle(null)} />

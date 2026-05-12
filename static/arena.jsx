@@ -1,5 +1,5 @@
 // ── Arena Lobby & Room ──────────────────────────────────────
-function ArenaSection({ lang }) {
+function ArenaSection({ lang, joinGameId }) {
   const c = React.useCallback((k) => t(k, lang), [lang]);
 
   const inputStyle = {
@@ -50,6 +50,14 @@ function ArenaSection({ lang }) {
     if (subPage === 'lobby') loadLobby();
   }, [subPage]);
 
+  // Auto-open join dialog if URL has ?join=XXX
+  React.useEffect(() => {
+    if (joinGameId) {
+      setSubPage('lobby');
+      openJoin(joinGameId);
+    }
+  }, [joinGameId]);
+
   // ── Create form ──────────────────────────────────────
   const [cfTitle, setCfTitle] = React.useState('');
   const [cfMode, setCfMode] = React.useState('managed');
@@ -60,14 +68,20 @@ function ArenaSection({ lang }) {
   const [cfModel, setCfModel] = React.useState('deepseek-chat');
   const [cfApiKey, setCfApiKey] = React.useState('');
 
+  const [createResult, setCreateResult] = React.useState(null);
+
   const doCreate = async () => {
     if (!cfTitle.trim()) { setError(lang === '中' ? '请输入房间标题' : 'Please enter a title'); return; }
-    if (!cfAgentName.trim()) { setError(lang === '中' ? '请输入 Agent 名称' : 'Please enter agent name'); return; }
-    if (!cfFaction) { setError(lang === '中' ? '请选择势力' : 'Please select a faction'); return; }
+    if (!cfAgentName.trim()) { setError(lang === '中' ? '请输入你的武将名' : 'Please enter your agent name'); return; }
+    if (!cfFaction) { setError(lang === '中' ? '请选择你的势力' : 'Please select your faction'); return; }
     setLoading(true); setError('');
     try {
       const pid = getPid();
-      const result = await createPvpGame(cfTitle.trim(), pid || undefined, 35);
+      const result = await createPvpGame(
+        cfTitle.trim(), pid || undefined,
+        cfAgentName.trim(), cfFaction,
+        cfPersona || undefined, 35
+      );
       setLoading(false);
       if (result && result.game_id) {
         if (result.player_id) setPid(result.player_id);
@@ -75,7 +89,7 @@ function ArenaSection({ lang }) {
         setToken(result.token);
         setFaction(cfFaction);
         saveToken(result.game_id, result.token, cfFaction);
-        setSubPage('room');
+        setCreateResult(result); // store for invite display
       } else {
         setError(result?.error || 'Create failed');
       }
@@ -114,14 +128,8 @@ function ArenaSection({ lang }) {
 
       if (joinMode === 'managed') {
         if (!jfAgentName.trim()) { setError(lang === '中' ? '请输入 Agent 名称' : 'Please enter agent name'); setLoading(false); return; }
-        let llmConfig = null;
-        if (jfProvider !== 'mock') {
-          llmConfig = { provider: jfProvider, model: jfModel };
-          if (jfApiKey) llmConfig.api_key = jfApiKey;
-        } else {
-          llmConfig = { provider: 'mock' };
-        }
-        const result = await joinManaged(joinGid, pid || undefined, jfAgentName.trim(), jfFaction, llmConfig, jfPersona || undefined);
+        // Use the simple /join/{id} endpoint — server handles LLM automatically
+        const result = await apiQuickJoin(joinGid, jfAgentName.trim(), jfFaction);
         setLoading(false);
         if (result && result.token) {
           setGameId(result.game_id);
@@ -250,15 +258,10 @@ function ArenaSection({ lang }) {
         style: { color: 'var(--accent)', padding: '10px 16px', background: 'rgba(179,66,55,0.1)', border: '1px solid var(--accent)', marginBottom: 16, fontSize: 13 }
       }, error),
 
-      React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
-        React.createElement('button', {
-          className: 'btn-ghost btn-sm', style: joinMode === 'managed' ? { background: 'var(--gold-dim)', color: 'var(--ink)' } : {},
-          onClick: () => setJoinMode('managed')
-        }, lang === '中' ? '托管模式' : 'Managed'),
-        React.createElement('button', {
-          className: 'btn-ghost btn-sm', style: joinMode === 'self_hosted' ? { background: 'var(--gold-dim)', color: 'var(--ink)' } : {},
-          onClick: () => setJoinMode('self_hosted')
-        }, lang === '中' ? '自主模式' : 'Self-hosted'),
+      React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 11, marginBottom: 12, lineHeight: 1.5 } },
+        lang === '中'
+          ? '⚡ 选择势力 + 输入名字即可加入。服务器会用 LLM 自动帮你决策，你不需要任何技术知识。'
+          : '⚡ Pick a faction + enter a name. The server uses LLM to decide for you — zero tech skills needed.'
       ),
 
       React.createElement('div', { style: { marginBottom: 16 } },
@@ -274,52 +277,25 @@ function ArenaSection({ lang }) {
         )
       ),
 
-      joinMode === 'managed' && React.createElement('div', null,
+      React.createElement('div', null,
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4 } },
-          lang === '中' ? 'Agent 名称' : 'Agent name'),
+          lang === '中' ? '武将名称' : 'Agent name'),
         React.createElement('input', {
           value: jfAgentName, onChange: (e) => setJfAgentName(e.target.value),
           style: inputStyle, placeholder: lang === '中' ? '如: 关羽' : 'e.g. Guan Yu'
         }),
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 12 } },
-          lang === '中' ? '性格描述 (persona)' : 'Persona'),
+          lang === '中' ? '性格描述 (可选)' : 'Persona (optional)'),
         React.createElement('textarea', {
           value: jfPersona, onChange: (e) => setJfPersona(e.target.value),
-          style: { ...inputStyle, minHeight: 60, resize: 'vertical' },
+          style: { ...inputStyle, minHeight: 50, resize: 'vertical' },
           placeholder: lang === '中' ? '如: 关羽性格，忠义勇猛...' : 'e.g. Loyal and brave...'
         }),
-        React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 12 } },
-          'LLM Provider'),
-        React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 8 } },
-          providers.map((p) =>
-            React.createElement('button', {
-              key: p.id,
-              className: 'btn-ghost btn-sm', style: jfProvider === p.id ? { background: 'var(--gold-dim)', color: 'var(--ink)' } : {},
-              onClick: () => { setJfProvider(p.id); setJfModel(p.defaultModel); }
-            }, p.name)
-          )
+        React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 10, marginTop: 8 } },
+          lang === '中'
+            ? '服务器会用 LLM 自动为你决策，你不需要配置任何东西。'
+            : 'Server auto-decides via LLM. No config needed.'
         ),
-        jfProvider !== 'mock' && React.createElement('div', null,
-          React.createElement('input', {
-            value: jfModel, onChange: (e) => setJfModel(e.target.value),
-            style: inputStyle, placeholder: 'Model name (uses server env key)'
-          }),
-        ),
-      ),
-
-      joinMode === 'self_hosted' && React.createElement('div', null,
-        React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4 } },
-          'Agent ID'),
-        React.createElement('input', {
-          value: jfAgentId, onChange: (e) => setJfAgentId(e.target.value),
-          style: inputStyle, placeholder: '从 /agents/register 获得'
-        }),
-        React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 12 } },
-          'Secret'),
-        React.createElement('input', {
-          value: jfSecret, onChange: (e) => setJfSecret(e.target.value),
-          style: inputStyle, placeholder: 'secret'
-        }),
       ),
 
       joinResult && React.createElement('div', {
@@ -536,66 +512,134 @@ function ArenaSection({ lang }) {
   }
 
   // ── Create page ────────────────────────────────────────
+  // ── CREATE page + invite screen ──────────────────────
   if (subPage === 'create') {
+    // After creation, show invite screen
+    if (createResult && createResult.game_id) {
+      const baseUrl = window.location.origin || '';
+      const inviteUrl = createResult.invite_url || (baseUrl + '/?tab=arena&join=' + createResult.game_id);
+      const curlCmd = 'curl -s -X POST "' + (baseUrl || 'http://localhost:8000') + '/join/' + createResult.game_id + '" -H "Content-Type: application/json" -d \'{"name":"关羽","faction":"蜀"}\'';
+
+      return React.createElement('section', { className: 'arena' },
+        React.createElement('div', { className: 'docs-head' },
+          React.createElement('h1', { className: 'docs-h1', style: { color: 'var(--gold)' } },
+            '\u2705 ' + (lang === '\u4E2D' ? '\u623F\u95F4\u5DF2\u521B\u5EFA' : 'Room Created')),
+          React.createElement('p', { className: 'docs-sub' },
+            lang === '\u4E2D' ? '\u4F60\u662F ' + (createResult.faction || '?') + ' \u52BF\u529B\uFF0C\u73B0\u5728\u9080\u8BF7\u670B\u53CB\u52A0\u5165\u5427' :
+              'You are faction ' + (createResult.faction || '?') + '. Now invite friends!')
+        ),
+
+        // \u9080\u8BF7\u94FE\u63A5
+        React.createElement('div', { style: {
+          background: 'var(--panel)', border: '2px solid var(--gold-dim)', padding: 20,
+          marginBottom: 16, borderRadius: 'var(--radius)',
+        }},
+          React.createElement('div', { style: { color: 'var(--gold)', fontWeight: 600, fontSize: 15, marginBottom: 8 } },
+            '\u{1F517} ' + (lang === '\u4E2D' ? '\u9080\u8BF7\u94FE\u63A5\uFF08\u53D1\u7ED9\u670B\u53CB\uFF09' : 'Invite Link (send to friends)')),
+          React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 12 } },
+            React.createElement('input', {
+              value: inviteUrl, readOnly: true,
+              style: { ...inputStyle, flex: 1, fontSize: 13, color: 'var(--gold-dim)' },
+              onFocus: (e) => e.target.select(),
+            }),
+            React.createElement('button', {
+              className: 'btn-primary btn-sm',
+              onClick: () => { try { navigator.clipboard.writeText(inviteUrl); } catch(e) {} },
+            }, lang === '\u4E2D' ? '\u590D\u5236' : 'Copy'),
+          ),
+          React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 11, lineHeight: 1.6 } },
+            lang === '\u4E2D'
+              ? '\u670B\u53CB\u6253\u5F00\u94FE\u63A5\u540E\uFF0C\u53EA\u9700\u9009\u62E9\u52BF\u529B + \u8F93\u5165\u540D\u5B57\uFF0C\u70B9\u201C\u52A0\u5165\u201D\u5373\u53EF\u3002\u670D\u52A1\u5668\u4F1A\u81EA\u52A8\u5E2E\u4ED6\u7684 Agent \u505A\u51B3\u7B56\u3002'
+              : 'Friend opens link, picks a faction + enters name, clicks Join. Server auto-drives their agent.'
+          ),
+        ),
+
+        // OpenClaw bridge
+        React.createElement('div', { style: {
+          background: 'var(--panel)', border: '1px solid var(--line)', padding: 16,
+          marginBottom: 16,
+        }},
+          React.createElement('div', { style: { color: 'var(--ink)', fontWeight: 600, fontSize: 14, marginBottom: 6 } },
+            '\u{1F916} ' + (lang === '\u4E2D' ? '\u670B\u53CB\u6709 OpenClaw Agent\uFF1F\u8BA9\u4ED6\u7684 Agent \u4EB2\u81EA\u51B3\u7B56' : 'Friend has an OpenClaw agent? Let it decide')),
+          React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 11, marginBottom: 8 } },
+            lang === '\u4E2D'
+              ? '\u4E0B\u9762\u8FD9\u6BB5\u6307\u4EE4\u53D1\u7ED9\u670B\u53CB\uFF0C\u4ED6\u590D\u5236\u5230 OpenClaw \u5BF9\u8BDD\u4E2D\uFF0CAgent \u5C31\u4F1A\u81EA\u52A8\u63A5\u7BA1\u6E38\u620F\u3002'
+              : 'Send this instruction to your friend. They paste it into OpenClaw, and their agent takes over.'
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 8 } },
+            React.createElement('textarea', {
+              readOnly: true, value: buildBridgeInstruction(createResult.game_id, baseUrl, '{{faction}}', '{{name}}'),
+              style: { ...inputStyle, minHeight: 100, fontSize: 11, resize: 'vertical' },
+              onFocus: (e) => e.target.select(),
+            }),
+            React.createElement('button', {
+              className: 'btn-ghost btn-sm', style: { alignSelf: 'flex-start' },
+              onClick: () => { try { navigator.clipboard.writeText(buildBridgeInstruction(createResult.game_id, baseUrl, '{{faction}}', '{{name}}')); } catch(e) {} },
+            }, lang === '\u4E2D' ? '\u590D\u5236' : 'Copy'),
+          ),
+        ),
+
+        // Enter room button
+        React.createElement('div', { style: { display: 'flex', gap: 8 } },
+          React.createElement('button', { className: 'btn-ghost', onClick: () => { setCreateResult(null); setSubPage('lobby'); } },
+            '\u2190 ' + (lang === '\u4E2D' ? '\u8FD4\u56DE\u5927\u5385' : 'Back to lobby')),
+          React.createElement('button', { className: 'btn-primary', onClick: () => setSubPage('room') },
+            (lang === '\u4E2D' ? '\u8FDB\u5165\u623F\u95F4' : 'Enter Room') + ' \u2192'),
+        ),
+      );
+    }
+
     return React.createElement('section', { className: 'arena' },
       React.createElement('div', { className: 'docs-head' },
-        React.createElement('h1', { className: 'docs-h1' }, lang === '中' ? '创建对战' : 'Create Game'),
-        React.createElement('p', { className: 'docs-sub' }, lang === '中' ? '创建一个新的 PvP 对局房间' : 'Create a new PvP game room')
+        React.createElement('h1', { className: 'docs-h1' }, lang === '\u4E2D' ? '\u521B\u5EFA\u5BF9\u6218' : 'Create Game'),
+        React.createElement('p', { className: 'docs-sub' }, lang === '\u4E2D'
+          ? '\u521B\u5EFA\u623F\u95F4\u540E\uFF0C\u670B\u53CB\u53EF\u4EE5\u901A\u8FC7\u94FE\u63A5\u4E00\u952E\u52A0\u5165\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u6280\u672F\u77E5\u8BC6\u3002'
+          : 'Create a room. Friends join via link — zero technical knowledge needed.')
       ),
       React.createElement('button', { className: 'btn-ghost btn-sm', onClick: () => setSubPage('lobby'), style: { marginBottom: 16 } },
-        '← ' + (lang === '中' ? '返回大厅' : 'Back to lobby')),
+        '\u2190 ' + (lang === '\u4E2D' ? '\u8FD4\u56DE\u5927\u5385' : 'Back to lobby')),
       error && React.createElement('div', {
         style: { color: 'var(--accent)', padding: '10px 16px', background: 'rgba(179,66,55,0.1)', border: '1px solid var(--accent)', marginBottom: 16, fontSize: 13 }
       }, error),
 
       React.createElement('div', { style: { maxWidth: 500 } },
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4 } },
-          lang === '中' ? '房间标题' : 'Room title'),
+          lang === '\u4E2D' ? '\u623F\u95F4\u6807\u9898' : 'Room title'),
         React.createElement('input', { value: cfTitle, onChange: (e) => setCfTitle(e.target.value),
-          style: inputStyle, placeholder: lang === '中' ? '给房间起个名字' : 'Name your room' }),
+          style: inputStyle, placeholder: lang === '\u4E2D' ? '\u7ED9\u623F\u95F4\u8D77\u4E2A\u540D\u5B57' : 'Name your room' }),
 
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 16 } },
-          lang === '中' ? 'Agent 名称' : 'Agent name'),
+          lang === '\u4E2D' ? '\u4F60\u7684\u6B66\u5C06\u540D' : 'Your agent name'),
         React.createElement('input', { value: cfAgentName, onChange: (e) => setCfAgentName(e.target.value),
-          style: inputStyle, placeholder: lang === '中' ? '如: 诸葛亮' : 'e.g. Zhuge Liang' }),
+          style: inputStyle, placeholder: lang === '\u4E2D' ? '\u5982: \u8BF8\u845B\u4EAE' : 'e.g. Zhuge Liang' }),
 
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 16 } },
-          lang === '中' ? '选择势力' : 'Choose faction'),
+          lang === '\u4E2D' ? '\u9009\u62E9\u4F60\u7684\u52BF\u529B' : 'Choose your faction'),
         React.createElement('div', { style: { display: 'flex', gap: 8 } },
           Object.entries(FACTIONS).map(([k, f]) =>
             React.createElement('button', {
               key: k,
               className: 'btn-ghost', style: { borderColor: f.color, color: f.color, background: cfFaction === k ? f.color + '22' : 'transparent' },
               onClick: () => setCfFaction(k)
-            }, (lang === '中' ? k + ' ' + f.leader : k + ' · ' + f.leaderEn))
+            }, (lang === '\u4E2D' ? k + ' ' + f.leader : k + ' \u00B7 ' + f.leaderEn))
           )
         ),
 
         React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 16 } },
-          lang === '中' ? '性格描述 (persona) - 可选' : 'Persona (optional)'),
+          lang === '\u4E2D' ? '\u6027\u683C\u63CF\u8FF0 (\u53EF\u9009)' : 'Persona (optional)'),
         React.createElement('textarea', { value: cfPersona, onChange: (e) => setCfPersona(e.target.value),
-          style: { ...inputStyle, minHeight: 60, resize: 'vertical' },
-          placeholder: lang === '中' ? '如: 关羽性格，忠义勇猛...' : 'e.g. Loyal and brave...' }),
+          style: { ...inputStyle, minHeight: 50, resize: 'vertical' },
+          placeholder: lang === '\u4E2D' ? '\u5982\uFF1A\u5173\u7FBD\u6027\u683C\uFF0C\u5FE0\u4E49\u52C7\u731B...\u2026' : 'e.g. Loyal and brave...' }),
 
-        React.createElement('label', { style: { display: 'block', color: 'var(--ink-mute)', fontSize: 12, marginBottom: 4, marginTop: 16 } },
-          'LLM Provider'),
-        React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 8 } },
-          providers.map((p) =>
-            React.createElement('button', {
-              key: p.id,
-              className: 'btn-ghost btn-sm', style: cfProvider === p.id ? { background: 'var(--gold-dim)', color: 'var(--ink)' } : {},
-              onClick: () => { setCfProvider(p.id); setCfModel(p.defaultModel); }
-            }, p.name)
-          )
-        ),
-        cfProvider !== 'mock' && React.createElement('div', null,
-          React.createElement('input', { value: cfModel, onChange: (e) => setCfModel(e.target.value),
-            style: inputStyle, placeholder: 'Model name (uses server env key)' }),
+        React.createElement('p', { style: { color: 'var(--ink-mute)', fontSize: 11, marginTop: 12, lineHeight: 1.5 } },
+          lang === '\u4E2D'
+            ? '\u26A1 \u670D\u52A1\u5668\u4F1A\u81EA\u52A8\u7528 LLM \u9A71\u52A8\u4F60\u548C\u670B\u53CB\u7684 Agent\u3002\u521B\u5EFA\u540E\u590D\u5236\u94FE\u63A5\u53D1\u7ED9\u670B\u53CB\u5373\u53EF\u3002'
+            : '\u26A1 Server auto-drives your agents via LLM. Create & share the link.'
         ),
 
         React.createElement('div', { style: { marginTop: 24 } },
           React.createElement('button', { className: 'btn-primary', onClick: doCreate, disabled: loading },
-            loading ? '…' : (lang === '中' ? '创建对局' : 'Create game') + ' ▶'),
+            loading ? '\u2026' : (lang === '\u4E2D' ? '\u521B\u5EFA\u5BF9\u5C40' : 'Create game') + ' \u25B6'),
         ),
       )
     );

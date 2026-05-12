@@ -349,12 +349,19 @@ async function fetchLobby() {
   }
 }
 
-async function createPvpGame(title, playerId, maxTicks) {
+async function createPvpGame(title, playerId, agentName, faction, persona, maxTicks) {
   try {
     const resp = await fetch(apiUrl('/games/create'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, player_id: playerId, max_ticks: maxTicks || 35 }),
+      body: JSON.stringify({
+        title,
+        player_id: playerId,
+        agent_name: agentName || '\u623F\u4E3B',
+        faction: faction || null,
+        persona: persona || null,
+        max_ticks: maxTicks || 35,
+      }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -468,6 +475,24 @@ async function surrenderGame(gameId, token) {
   }
 }
 
+async function apiQuickJoin(gameId, name, faction) {
+  try {
+    const resp = await fetch(apiUrl('/join/' + gameId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, faction }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || 'Join failed' };
+    }
+    return await resp.json();
+  } catch (e) {
+    console.error('apiQuickJoin error:', e);
+    return { error: 'Network error' };
+  }
+}
+
 async function updateAgentConfig(gameId, token, persona, llmConfig) {
   try {
     const body = {};
@@ -556,6 +581,16 @@ function formatTime(isoStr, lang) {
   } catch(e) { return isoStr ? isoStr.slice(0, 10) : ''; }
 }
 
+function buildBridgeInstruction(gameId, baseUrl, faction, name) {
+  const gid = gameId || '{{GAME_ID}}';
+  const url = baseUrl || 'http://localhost:8000';
+  return `\u4F60\u73B0\u5728\u53C2\u4E0E\u4E86\u4E00\u573A\u4E09\u56FD\u7B56\u7565\u5BF9\u6218\uFF0C\u4F60\u7684\u52BF\u529B\u662F ${faction || '{{\u4F60\u7684\u52BF\u529B}}'} \u3002\n
+\u6BCF\u56DE\u5408\u4F60\u9700\u8981\uFF1A\n
+1. \u83B7\u53D6\u6E38\u620F\u72B6\u6001\uFF1A\n   curl -s "${url}/games/${gid}/state?token={{YOUR_TOKEN}}"\n
+2. \u63D0\u4EA4\u4F60\u7684\u52A8\u4F5C\uFF1A\n   curl -s -X POST "${url}/games/${gid}/actions?token={{YOUR_TOKEN}}" \\\n     -H "Content-Type: application/json" \\\n     -d '{"actions":[{"type":"attack","from":"\u957F\u5B89","target":"\u5B9B\u57CE","troops":400}],"public_speech":"\u5929\u4E0B\u5927\u52BF\uFF0C\u5408\u4E45\u5FC5\u5206"}'\n
+\u5177\u4F53\u64CD\u4F5C\uFF1A\n1. \u5148\u7528\u4E0B\u9762\u7684 curl \u52A0\u5165\u6E38\u620F\uFF08\u66FF\u6362 *\u52BF\u529B* \u548C *\u540D\u5B57*\uFF09\uFF1A\n   curl -s -X POST "${url}/join/${gid}" -H "Content-Type: application/json" -d '{"name":"${name || '{{\u4F60\u7684\u540D\u5B57}}'}","faction":"${faction || '{{\u4F60\u7684\u52BF\u529B}}'}"}'\n\n2. \u4FDD\u5B58\u8FD4\u56DE\u7684 token\u3002\n3. \u5FAA\u73AF\uFF1AGET /state \u2192 \u5206\u6790\u5C40\u52BF \u2192 POST /actions \u2192 \u7B49\u5F85 tick \u2192 \u91CD\u590D\u3002\n\n\u6E38\u620F\u89C4\u5219\uFF1A7\u5EA7\u57CE\u6C60\uFF0C3\u65B9\u52BF\u529B\uFF0C\u6BCF\u56DE\u5408\u53EF\u4EE5 attack/defend/recruit/march/diplomacy\u3002\u5360\u9886\u6240\u6709\u57CE\u6C60\u5373\u80DC\u5229\u3002`;
+}
+
 Object.assign(window, {
   API_BASE, CITIES, FACTIONS, COPY, ENDPOINTS, PYTHON_SDK,
   BATTLES_PLACEHOLDER, LEADERBOARD_PLACEHOLDER,
@@ -563,6 +598,7 @@ Object.assign(window, {
   apiRegister, apiCreateGame, apiJoinGame,
   fetchLobby, createPvpGame, joinManaged, joinSelfHosted, startGame,
   fetchLiveGame, fetchMyGames, surrenderGame, updateAgentConfig,
+  apiQuickJoin, buildBridgeInstruction,
   apiUrl, formatTime,
   t,
 });
