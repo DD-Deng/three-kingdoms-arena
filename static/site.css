@@ -721,7 +721,198 @@
 .theme-ink .how-num { color: var(--accent); }
 .theme-ink .ph-tag { color: var(--accent); border-color: var(--accent); }
 
-/* ── Mobile responsive ─────────────────────────────────────── */
+/* ── Lobby page ─────────────────────────────────────────────── */
+.lobby-section {
+  display: flex; flex-direction: column; gap: 24px;
+}
+.lobby-loading {
+  text-align: center; padding: 80px 20px;
+}
+.lobby-hero {
+  text-align: center; padding: 40px 20px 20px;
+}
+.lobby-title {
+  font-size: 36px; font-weight: 700; color: var(--ink);
+  letter-spacing: 2px; margin: 0 0 8px;
+  line-height: 1.25;
+}
+.theme-scroll .lobby-title { color: var(--gold); }
+.theme-cyber .lobby-title { font-family: var(--font-mono); font-size: 28px; color: var(--gold); }
+.lobby-sub {
+  font-size: 14px; color: var(--ink-dim); margin: 0;
+  font-family: var(--font-mono); letter-spacing: 1px;
+}
+
+.lobby-status-bar {
+  display: flex; gap: 24px; align-items: center; justify-content: center;
+  padding: 12px 20px; background: var(--panel); border: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim);
+  flex-wrap: wrap;
+}
+.lobby-status-bar b {
+  color: var(--ink); font-weight: 700;
+}
+
+/* ── Slots grid ──────────────────────────────────────────────── */
+.slot-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+.faction-card {
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 20px; display: flex; flex-direction: column;
+  transition: border-color .2s, box-shadow .2s;
+}
+.faction-card.card-joinable { border-color: var(--gold-dim); }
+.faction-card.card-joinable:hover { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-dim); }
+.theme-ink .faction-card.card-joinable { border-color: var(--accent); opacity: 0.8; }
+.theme-ink .faction-card.card-joinable:hover { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 1px var(--accent); }
+
+.slot-card { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.slot-faction { display: flex; align-items: center; gap: 8px; }
+.slot-glyph {
+  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+  background: var(--fc); color: #fff; font-size: 20px; font-weight: 700;
+}
+.slot-name { font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: 2px; }
+.slot-leader { font-size: 13px; color: var(--ink-dim); }
+.slot-status { display: flex; align-items: center; gap: 6px; }
+.slot-icon { font-size: 14px; font-family: var(--font-mono); width: 18px; text-align: center; }
+.slot-text { font-size: 12px; color: var(--ink-dim); font-family: var(--font-mono); }
+.slot-open .slot-icon { color: var(--wu); }
+.slot-occupied .slot-icon { color: var(--accent); }
+.slot-disconnected .slot-icon { color: var(--accent); }
+.slot-ip {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-mute);
+  padding: 4px 8px; background: var(--bg); border: 1px solid var(--line-2);
+  align-self: flex-start;
+}
+
+.card-join-btn { margin-top: auto; }
+
+/* ── Modal components ────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.theme-ink .modal-overlay { background: rgba(26,22,20,0.35); }
+.modal-box {
+  background: var(--panel); border: 1px solid var(--line);
+  max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto;
+  position: relative;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+}
+.modal-close {
+  position: absolute; top: 12px; right: 14px;
+  cursor: pointer; font-size: 18px; color: var(--ink-mute);
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+.modal-close:hover { color: var(--ink); }
+.modal-body { padding: 28px 24px; }
+.modal-icon { font-size: 36px; text-align: center; margin-bottom: 8px; }
+.modal-hint { font-size: 13px; color: var(--ink-dim); line-height: 1.65; margin: 0; }
+.modal-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ── Instruction / token display ─────────────────────────────────── */
+.instruction-box {
+  background: var(--bg); border: 1px solid var(--line);
+  max-height: 320px; overflow-y: auto;
+  margin: 8px 0;
+}
+.instruction-text {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink); padding: 14px; margin: 0;
+  white-space: pre-wrap; word-break: break-word;
+  line-height: 1.6;
+}
+.token-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--bg); border: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+}
+.token-label { font-size: 10px; color: var(--ink-mute); letter-spacing: 1px; text-transform: uppercase; }
+.token-value { font-size: 12px; color: var(--gold); font-weight: 600; word-break: break-all; }
+.theme-ink .token-value { color: var(--accent); }
+.token-expiry { font-size: 11px; color: var(--ink-dim); margin-left: auto; }
+
+.btn-copied {
+  font-family: var(--font-sans); font-size: 13px; letter-spacing: 1px;
+  padding: 11px 22px; cursor: pointer; border-radius: var(--radius);
+  background: var(--wu); color: #fff; border: 1px solid var(--wu);
+  font-weight: 600; transition: transform .12s, background .12s;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block; width: 32px; height: 32px;
+  border: 3px solid var(--line); border-top-color: var(--gold);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+.theme-ink .spinner { border-top-color: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Spectator section ───────────────────────────────────────────── */
+.spec-section { margin-top: 8px; }
+.spec-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--panel); border: 1px solid var(--line);
+  border-bottom: none; font-size: 14px; font-weight: 600; color: var(--ink);
+}
+.spec-map-wrap {
+  display: grid; grid-template-columns: 1.2fr 1fr; gap: 0;
+  border: 1px solid var(--line); background: var(--panel);
+}
+.spec-map {
+  min-height: 180px; position: relative;
+}
+.spec-feed {
+  display: flex; flex-direction: column; gap: 0;
+  border-left: 1px solid var(--line);
+  max-height: 180px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 11px;
+}
+.feed-item {
+  padding: 6px 10px; border-bottom: 1px solid var(--line-2);
+  color: var(--ink-dim); line-height: 1.5;
+}
+.feed-item.dim { color: var(--ink-mute); opacity: 0.7; }
+.feed-item b { color: var(--ink); }
+
+.spec-stats {
+  display: flex; gap: 0; padding: 0;
+  background: var(--panel); border: 1px solid var(--line); border-top: none;
+}
+.spec-stat-item {
+  flex: 1; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; align-items: center;
+  font-size: 12px; color: var(--ink-dim); border-right: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+}
+.spec-stat-item:last-child { border-right: none; }
+.spec-stat-item b { font-size: 14px; }
+
+/* ── Game end modal ──────────────────────────────────────────────── */
+.game-end-modal {
+  text-align: center;
+}
+.game-end-modal .modal-body {
+  padding: 36px 28px;
+}
+
+/* ── Lobby responsive ────────────────────────────────────────────── */
+@media (max-width: 880px) {
+  .slot-grid { grid-template-columns: 1fr; }
+  .lobby-title { font-size: 26px; }
+  .lobby-status-bar { gap: 12px; font-size: 11px; }
+  .spec-map-wrap { grid-template-columns: 1fr; }
+  .spec-feed { border-left: none; border-top: 1px solid var(--line); max-height: 120px; }
+  .modal-box { max-width: 100%; max-height: 90vh; }
+  .token-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .token-expiry { margin-left: 0; }
+}
+
+
 @media (max-width: 880px) {
   .site-nav { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
   .site-tabs { order: 3; flex-basis: 100%; overflow-x: auto; margin-left: 0; }
