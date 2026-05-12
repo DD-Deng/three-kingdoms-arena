@@ -1,0 +1,108 @@
+Claude Code 任务提示词：将三国 Arena 改为「唯一对局」模式
+
+## 核心需求
+
+把这个项目从「多房间大厅制」改为「唯一对局制」：
+- 系统永远只有一场对局在运行
+- 首页直接展示实时战况（不再有大厅、创建房间、加入房间等概念）
+- 玩家在首页点"加入"就能进入这场唯一的对局
+- 对局结束后自动重启新局
+
+## 项目架构概览
+
+项目根目录：/home/ubuntu/three-kingdoms-arena/
+
+后端文件：
+- app/main.py — FastAPI 路由（/games/create, /games/{id}/join, /lobby, /games/{id}/start 等）
+- app/engine.py — 游戏引擎（pvp_create_game, pvp_join_managed, pvp_start_game, live_game_state, auto_decide_managed 等）
+- app/models.py — 数据模型（Game, Agent, City, Action 等）
+- app/database.py — SQLite 数据库初始化
+
+前端文件：
+- static/site.jsx — 主站点壳（tab 切换：home/battles/arena/rules 等）
+- static/arena.jsx — 对战大厅 / 创建房间 / 加入房间 / 房间观战
+- static/hero-map.jsx — 首页演示动画（目前是随机模拟动画，不是真实数据）
+- static/shared.jsx — 共享数据/API 函数（CITIES, FACTIONS, createPvpGame, joinManaged 等）
+- static/site.css — 样式
+- static/index.html — SPA 入口
+
+## 具体改动要求
+
+### 后端改动（app/engine.py）
+
+1. 新增 `get_or_create_current_game(session)` 函数：检查数据库是否有 active/waiting 的 PvP 对局，有就返回它；没有就自动创建一场新的。新对局自动加入三方托管 agent（蜀/魏/吴 用默认名字和 persona）。
+
+2. 保留但简化 `pvp_join_managed`：玩家加入唯一对局时，不需要传 game_id，自动加入当前对局。如果该势力已被占，返回错误。
+
+3. `live_game_state` 去掉 game_id 参数，自动取当前对局。
+
+4. 对局结束时（游戏引擎检测到 winner 不为空或 max_ticks 触发），自动调用 `get_or_create_current_game` 创建新局。把这一步加到 `pvp_maybe_advance` 的最后。
+
+5. `_resolve_max_ticks` 必须在所有模式下都能触发（目前只在 PvP managed 的 pvp_maybe_advance 里调用）。
+
+### 后端改动（app/main.py）
+
+1. 删除路由：`/games/create`、`/lobby`、`/games/{id}/start`、`/games/{id}/live`、`/my-games`、`/games/{id}/surrender`
+
+2. 新增路由：
+   - `POST /join` — 加入当前唯一对局。body: {name, faction}。由后端自动分配托管 agent。
+   - `GET /current-game` — 返回当前对局的公开状态（城池、兵力、事件、外交等），供首页实时展示
+
+3. 保留路由：
+   - `/` 首页
+   - `/games/{id}/state?token=` agent 视角（内部保留，agent 桥接用）
+   - `/games/{id}/actions?token=` 提交动作
+   - `/agents/register`
+   - `/public` 和 `/admin` 相关路由
+   - 静态文件服务
+
+4. 首页 `/` 改为返回 SPA 的同时，注入当前对局数据作为初始状态（或者让前端自己调 `/current-game`）
+
+### 前端改动
+
+1. **shared.jsx**：删除 `createPvpGame`、`fetchLobby`、`fetchLiveGame`、`fetchMyGames`、`startGame`、`surrenderGame`。新增 `fetchCurrentGame()` 调用 `/current-game`。新增 `joinCurrentGame(name, faction)` 调用 `/join`。
+
+2. **hero-map.jsx**（重点）：改造成接收真实游戏数据的组件，不再用模拟动画。
+   - 接收 props: `{ cities, events, diplomacy, tick, status, agents }`
+   - 画 SVG 地图：根据 cities 数组画城池归属和兵力
+   - 显示最新事件的滚动日志
+   - 显示三方势力卡片（势力名、城池数、总兵力）
+   - 如果状态是 finished，显示胜者
+   - 保持现有的三个主题（scroll/ink/cyber）适配
+
+3. **site.jsx**：Home tab 改为直接展示实时对局画面。
+   - Hero 区域保留（标题、描述），但去掉右边的演示动画框
+   - 下面直接放 HeroMap 组件 + 实时战况 + "加入对战"按钮
+   - 每 3 秒自动轮询 `/current-game` 更新数据
+   - 点"加入对战"弹出简化弹窗：选势力 + 输入名字 → 调用 joinCurrentGame
+
+4. **arena.jsx**：大幅简化。
+   - 删除 lobby、create、my-games、room 子页面
+   - 只保留"加入"弹窗（选势力+名字，点加入）
+   - 加入成功后显示"你已加入对局！"并展示当前战况
+
+5. **static/site.css**：保持现有主题不变，为新组件加必要样式。
+
+### 数据库改动
+
+1. **app/models.py**：`Game` 模型加一个字段 `is_current: bool = Field(default=True)`，标记当前活跃对局。旧对局设为 `is_current=False`。每次创建新对局时把旧标记清除。
+
+### 重要约束
+
+- 不要改动 agents/ 目录（LLM agent 客户端逻辑不动）
+- 不要改动 docs/ 目录（规则文档不动）
+- 不要改动 templates/ 目录（后台页面不动）
+- 保留 CORS 全开
+- 保留所有游戏规则逻辑（engine.py 里的战斗/外交/经济系统不动）
+- 前端保持 React.createElement / JSX 风格一致
+- 保持中英双语支持
+- 首页的"三国 Arena"品牌标识保留
+
+### 测试验证
+
+修改完成后，启动服务（uvicorn app.main:app --host 0.0.0.0 --port 8000），验证：
+1. 首次打开首页 → 自动创建一场新对局 → 展示实时战况
+2. 点"加入对战" → 选势力 → 加入成功 → 首页刷新显示该势力已有人
+3. 三个人都加入后 → 对局自动开始 → 首页实时更新战况
+4. 对局结束后 → 自动创建新局 → 首页继续直播
+
