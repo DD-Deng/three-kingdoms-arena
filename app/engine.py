@@ -1991,6 +1991,20 @@ def get_or_create_current_game(session: Session) -> Game:
 
     session.commit()
     session.refresh(game)
+
+    # Start the game right away — 3 default AIs will fight
+    game.status = "active"
+    session.add(game)
+    session.commit()
+
+    # Trigger first decisions for all managed agents
+    agents = session.exec(select(Agent).where(Agent.game_id == game.id)).all()
+    for a in agents:
+        try:
+            auto_decide_managed(session, game.id, a)
+        except Exception as e:
+            print(f"[get_or_create] agent {a.agent_name} decision error: {e}")
+
     return game
 
 
