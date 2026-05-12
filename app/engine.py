@@ -1717,13 +1717,85 @@ def live_game_state(session: Session, game_id: int) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 
+_fun_mock_n: dict[str, int] = {}  # module-level counter per agent
+
+
+def _get_fun_mock():
+    """Aggressive mock provider — attacks, recruits, and talks trash.
+    Produces visible events even without real LLM configured."""
+    import random
+
+    class FunMock:
+        def __init__(self):
+            pass
+
+        def decide(self, system_prompt: str, user_prompt: str, valid_actions: list) -> dict:
+            attacks = [a for a in valid_actions if a["type"] == "attack"]
+            defends = [a for a in valid_actions if a["type"] == "defend"]
+            recruits = [a for a in valid_actions if a["type"] == "recruit"]
+            marches = [a for a in valid_actions if a["type"] == "march"]
+            diplomacy = [a for a in valid_actions if a["type"] == "diplomacy"]
+
+            actions = []
+
+            # Always defend your weakest city
+            if defends:
+                actions.append({"type": "defend", "target": defends[0]["target"]})
+
+            # Attack 40% of the time if there are targets
+            if attacks and random.random() < 0.4:
+                a = random.choice(attacks)
+                troops = min(a.get("max_troops", 200), random.randint(80, 250))
+                if troops > 0:
+                    actions.append({"type": "attack", "from": a["from"], "target": a["target"], "troops": troops})
+
+            # Recruit when possible
+            if recruits and random.random() < 0.3:
+                r = random.choice(recruits)
+                amt = min(r.get("max_amount", 100), random.randint(50, 150))
+                if amt > 0:
+                    actions.append({"type": "recruit", "target": r["target"], "amount": amt})
+
+            # March troops to front-line cities
+            if marches and random.random() < 0.2:
+                m = random.choice(marches)
+                troops = min(m.get("max_troops", 100), random.randint(50, 200))
+                if troops > 0:
+                    actions.append({"type": "march", "from": m["from"], "to": m["to"], "troops": troops})
+
+            # Diplomacy every ~10 ticks — propose alliances or declare war
+            if diplomacy and random.random() < 0.1:
+                d = random.choice(diplomacy)
+                dt = random.choice(["alliance_propose", "declare_war", "message"])
+                msgs = ["天下大势，合久必分！", "尔等速降，可免一死！", "吾观天下，唯我可主沉浮。", "联盟共伐，方为上策。"]
+                actions.append({
+                    "type": "diplomacy",
+                    "target": d["target"],
+                    "diplomacy_type": dt,
+                    "message": random.choice(msgs),
+                })
+
+            public_speech = random.choice([
+                "", "", "",  # mostly silent
+                "谁敢与我一战！", "联盟伐敌，机不可失！",
+            ])
+
+            return {
+                "private_thought": "[AI] 分析战局中…",
+                "public_speech": public_speech,
+                "actions": actions,
+            }
+
+    return FunMock()
+
+
 def _build_llm_provider(agent: Agent):
     """Build an LLM provider from the agent's llm_config.
 
     Priority:
     1. agent.llm_config (explicit per-agent config)
     2. Environment variables (DEFAULT_LLM_PROVIDER, LLM_API_KEY)
-    3. Fallback to mock provider
+    3. Module-level aggressive mock that attacks and does diplomacy
     """
     llm_config = json.loads(agent.llm_config) if agent.llm_config else {}
     provider_name = llm_config.get("provider") or os.environ.get("DEFAULT_LLM_PROVIDER", "mock")
@@ -1738,8 +1810,7 @@ def _build_llm_provider(agent: Agent):
     base_url = llm_config.get("base_url")
 
     if provider_name == "mock":
-        from agents.llm_agent import MockProvider
-        return MockProvider()
+        return _get_fun_mock()
     elif provider_name == "deepseek":
         from agents.llm_agent import OpenAICompatProvider
         model = llm_config.get("model") or os.environ.get("DEFAULT_LLM_MODEL", "deepseek-chat")
