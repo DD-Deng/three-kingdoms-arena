@@ -544,175 +544,28 @@ def admin_stats_page(
 # ═══════════════════════════════════════════════════════════════
 
 
-@app.get("/lobby")
-def lobby_list(session: Session = Depends(get_session)):
-    return {"games": eng.lobby_list_games(session)}
+# ═══════════════════════════════════════════════════════════════
+# 唯一对局 API
+# ═══════════════════════════════════════════════════════════════
 
-
-@app.post("/games/create")
-def pvp_create_game(body: dict, session: Session = Depends(get_session)):
+@app.get("/current-game")
+def current_game_state(session: Session = Depends(get_session)):
+    """返回当前唯一对局的公开状态，供首页实时展示。"""
     try:
-        result = eng.pvp_create_game(
-            session,
-            title=body.get("title"),
-            player_id=body.get("player_id"),
-            host_name=body.get("agent_name", "房主"),
-            host_faction=body.get("faction"),
-            host_persona=body.get("persona"),
-            max_ticks=body.get("max_ticks", 35),
-            tick_timeout_sec=body.get("tick_timeout_sec", 60),
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return result
+        return eng.current_game_state(session)
+    except Exception:
+        return {"status": "error", "detail": "无法获取对局"}
 
 
-@app.post("/games/{game_id}/join-managed")
-def pvp_join_managed(
-    game_id: int,
-    body: dict,
-    session: Session = Depends(get_session),
-):
-    try:
-        token, faction, gid = eng.pvp_join_managed(
-            session, game_id,
-            player_id=body.get("player_id"),
-            agent_name=body["agent_name"],
-            faction=body["faction"],
-            llm_config=body.get("llm_config"),
-            persona=body.get("persona"),
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"token": token, "faction": faction, "game_id": gid}
-
-
-@app.post("/games/{game_id}/join-selfhosted")
-def pvp_join_selfhosted(
-    game_id: int,
-    body: dict,
-    session: Session = Depends(get_session),
-):
-    try:
-        token, gid = eng.pvp_join_selfhosted(
-            session, game_id,
-            agent_id=body["agent_id"],
-            secret=body["secret"],
-            faction=body["faction"],
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"token": token, "game_id": gid, "agent_id": body["agent_id"]}
-
-
-@app.post("/join/{game_id}")
-def quick_join(
-    game_id: int,
-    body: dict,
-    request: Request,
-    session: Session = Depends(get_session),
-):
-    """One-click join: auto-register + auto-join as managed agent.
-    No API keys needed — server uses default LLM provider."""
-    host = request.headers.get("host", "")
-    base_url = f"http://{host}" if host else os.environ.get("BASE_URL", "http://localhost:8000")
-
-    # Managed mode (default): server handles LLM for the agent
-    mode = body.get("mode", "managed")
+@app.post("/join")
+def join_current_game(body: dict, session: Session = Depends(get_session)):
+    """加入当前唯一对局。只需 name + faction，服务器托管决策。"""
     name = body.get("name", "神秘武将")
     faction = body.get("faction")
-
     if not faction or faction not in ["蜀", "魏", "吴"]:
         raise HTTPException(status_code=400, detail="faction must be 蜀/魏/吴")
-
     try:
-        if mode == "self_hosted":
-            # Legacy self-hosted path
-            token, faction, gid, curl_state, curl_action = eng.quick_join(
-                session, game_id, name, faction, base_url=base_url
-            )
-            return {
-                "token": token, "faction": faction, "game_id": gid,
-                "curl_state": curl_state, "curl_action": curl_action,
-                "mode": "self_hosted",
-            }
-        else:
-            # Managed mode: server handles decisions
-            token, faction, gid = eng.pvp_join_managed(
-                session, game_id,
-                player_id=body.get("player_id"),
-                agent_name=name,
-                faction=faction,
-                llm_config=body.get("llm_config"),  # optional
-                persona=body.get("persona"),         # optional
-            )
-            invite_url = f"{base_url}/?tab=arena&join={gid}"
-            return {
-                "token": token, "faction": faction, "game_id": gid,
-                "mode": "managed",
-                "invite_url": invite_url,
-            }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.put("/games/{game_id}/agent/{token}/config")
-def update_agent_config(
-    game_id: int,
-    token: str,
-    body: dict,
-    session: Session = Depends(get_session),
-):
-    agent = _auth(session, game_id, token)
-    if body.get("persona"):
-        agent.persona_config = body["persona"]
-    if body.get("llm_config"):
-        agent.llm_config = json.dumps(body["llm_config"], ensure_ascii=False)
-    session.add(agent)
-    session.commit()
-    return {"msg": "配置已更新"}
-
-
-@app.post("/games/{game_id}/start")
-def pvp_start_game(
-    game_id: int,
-    body: dict,
-    session: Session = Depends(get_session),
-):
-    try:
-        result = eng.pvp_start_game(session, game_id, token=body["token"])
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return result
-
-
-@app.get("/games/{game_id}/live")
-def pvp_live_game(
-    game_id: int,
-    session: Session = Depends(get_session),
-):
-    try:
-        return eng.live_game_state(session, game_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/my-games")
-def my_games(
-    player_id: str,
-    session: Session = Depends(get_session),
-):
-    return {"games": eng.my_games(session, player_id)}
-
-
-@app.post("/games/{game_id}/surrender")
-def pvp_surrender(
-    game_id: int,
-    body: dict,
-    session: Session = Depends(get_session),
-):
-    try:
-        return eng.surrender_agent(session, game_id, token=body["token"])
+        return eng.join_current_game(session, name, faction)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

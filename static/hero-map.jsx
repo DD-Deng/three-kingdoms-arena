@@ -1,164 +1,52 @@
 // ═══════════════════════════════════════════════════════════════
-// hero-map.jsx — Live battle animation (themed by prop)
+// hero-map.jsx — Real-time battle map (data-driven)
 // ═══════════════════════════════════════════════════════════════
 
-const HM_USE_REDUCER = (() => {});
+// Adjacency edges for the SVG (matching backend CITY_ADJACENCY)
+const HM_EDGES = [
+  ["洛阳","长安"],["洛阳","邺城"],["洛阳","宛城"],
+  ["长安","宛城"],["长安","成都"],
+  ["宛城","襄阳"],
+  ["襄阳","成都"],["襄阳","建业"],
+];
 
-// Adjacency (which city can attack which)
-const HM_ADJ = {
-  "长安": ["洛阳", "成都", "宛城"],
-  "洛阳": ["长安", "宛城"],
-  "宛城": ["长安", "洛阳", "襄阳", "成都"],
-  "襄阳": ["宛城", "成都", "建业"],
-  "成都": ["长安", "宛城", "襄阳"],
-  "建业": ["襄阳"],
-};
-
-function HM_initState() {
-  const s = {};
-  CITIES.forEach((c) => {
-    s[c.id] = {
-      owner: c.faction,
-      troops: c.faction ? 1000 + Math.floor(Math.random() * 200) : 600 + Math.floor(Math.random() * 200),
-      defense: 0,
-      flash: 0,
-    };
-  });
-  return s;
-}
-
-// Pick a sensible attack
-function HM_pickAttack(state) {
-  const owned = CITIES.filter((c) => state[c.id].owner);
-  const ordered = owned.sort(() => Math.random() - 0.5);
-  for (const src of ordered) {
-    if (state[src.id].troops < 250) continue;
-    const adj = HM_ADJ[src.id] || [];
-    const targets = adj
-      .map((n) => CITIES.find((c) => c.id === n))
-      .filter((c) => c && state[c.id].owner !== state[src.id].owner);
-    if (targets.length === 0) continue;
-    const tgt = targets[Math.floor(Math.random() * targets.length)];
-    return {
-      src: src.id,
-      tgt: tgt.id,
-      atkFaction: state[src.id].owner,
-      defFaction: state[tgt.id].owner,
-      troops: Math.floor(state[src.id].troops * (0.4 + Math.random() * 0.3)),
-    };
-  }
-  return null;
-}
-
-function HeroMap({ theme, lang }) {
-  const [state, setState] = React.useState(HM_initState);
-  const [tick, setTick] = React.useState(1);
-  const [attack, setAttack] = React.useState(null);
-  const [eventLog, setEventLog] = React.useState([]);
-  const [paused, setPaused] = React.useState(false);
-
-  // Diplomacy event injector — fires occasionally between battles
-  const maybeDiplomacy = React.useCallback(() => {
-    if (Math.random() > 0.35) return null;
-    const factions = ["蜀", "魏", "吴"];
-    const a = factions[Math.floor(Math.random() * 3)];
-    let b = factions[Math.floor(Math.random() * 3)];
-    while (b === a) b = factions[Math.floor(Math.random() * 3)];
-    const kinds = [
-      { k: "alliance_propose", cn: `${a} → ${b}:遣使求盟`, en: `${a} → ${b}: alliance_propose` },
-      { k: "alliance_accept",  cn: `${b} → ${a}:歃血为盟`, en: `${b} → ${a}: alliance_accept` },
-      { k: "declare_war",      cn: `${a} 宣战 ${b}`,        en: `${a} declared war on ${b}` },
-      { k: "alliance_break",   cn: `${a} 单方面撕毁与 ${b} 之盟`, en: `${a} broke alliance with ${b}` },
-    ];
-    const e = kinds[Math.floor(Math.random() * kinds.length)];
-    return { tick, text: lang === "中" ? e.cn : e.en, kind: "diplo", faction: a };
-  }, [tick, lang]);
-
-  React.useEffect(() => {
-    if (paused) return;
-    const id = setInterval(() => {
-      setState((prev) => {
-        const next = JSON.parse(JSON.stringify(prev));
-        // soft regen / decay flash
-        Object.keys(next).forEach((k) => {
-          if (next[k].owner) next[k].troops = Math.min(2200, next[k].troops + 15 + Math.floor(Math.random() * 25));
-          next[k].flash = Math.max(0, next[k].flash - 1);
-        });
-        // pick + execute attack
-        const a = HM_pickAttack(next);
-        if (a) {
-          const defPower = next[a.tgt].troops * (1 + next[a.tgt].defense * 0.2);
-          const atkPower = a.troops + Math.floor(Math.random() * 200 - 100);
-          const atkWins = atkPower > defPower;
-          let evt;
-          if (atkWins) {
-            next[a.src].troops -= a.troops;
-            next[a.tgt].owner = a.atkFaction;
-            next[a.tgt].troops = Math.floor(a.troops * 0.75);
-            next[a.tgt].defense = 0;
-            next[a.tgt].flash = 3;
-            const v = lang === "中"
-              ? `${a.atkFaction} 自 ${a.src} 出兵 ${a.troops},攻陷 ${a.tgt}`
-              : `${FACTIONS[a.atkFaction].en} took ${a.tgt} from ${a.src} (${a.troops} troops)`;
-            evt = { tick: prev.__tick, text: v, kind: "win", faction: a.atkFaction };
-          } else {
-            next[a.src].troops -= Math.floor(a.troops * 0.6);
-            next[a.tgt].troops = Math.max(100, Math.floor(next[a.tgt].troops * 0.5));
-            next[a.tgt].flash = 2;
-            const v = lang === "中"
-              ? `${a.tgt} 守城成功,${a.atkFaction} 退兵`
-              : `${a.tgt} held — ${FACTIONS[a.atkFaction].en} repelled`;
-            evt = { tick: prev.__tick, text: v, kind: "hold", faction: a.defFaction || a.atkFaction };
-          }
-          setAttack(a);
-          const diplo = maybeDiplomacy();
-          setEventLog((log) => {
-            const entries = [evt, ...(diplo ? [diplo] : [])];
-            return [...entries, ...log].slice(0, 5);
-          });
-          setTimeout(() => setAttack(null), 900);
-        }
-        return next;
-      });
-      setTick((t) => t + 1);
-    }, 2400);
-    return () => clearInterval(id);
-  }, [paused, lang]);
-
-  // theme styling tokens
-  const isInk = theme === "ink";
-  const isCyber = theme === "cyber";
-
-  const cityStyle = (city) => {
-    const owner = state[city.id].owner;
-    const f = owner ? FACTIONS[owner] : null;
-    const baseColor = f ? f.color : (isInk ? "#666" : isCyber ? "#5a6e66" : "#7a6a4a");
-    if (isCyber) {
-      return {
-        fill: "#0d1110",
-        stroke: baseColor,
-        strokeWidth: 1.5,
-      };
-    }
-    if (isInk) {
-      return { fill: baseColor, stroke: "#1a1614", strokeWidth: 1 };
-    }
-    return { fill: baseColor, stroke: "#1c1410", strokeWidth: 1.5 };
-  };
-
-  const labelColor = isInk ? "#1a1614" : isCyber ? "#c8e8d8" : "#e8d8b0";
-
-  // SVG dims
+function HeroMap({ theme, lang, cities, events, diplomacy, tick, status, winner, agents }) {
   const W = 520, H = 340;
 
-  // Map background
+  const isInk = theme === "ink";
+  const isCyber = theme === "cyber";
   const mapBg = isCyber ? "#080b0a" : isInk ? "#fbf6ec" : "#1a140e";
   const gridColor = isCyber ? "#172220" : isInk ? "#e8e0d2" : "#2a1f14";
+  const labelColor = isInk ? "#1a1614" : isCyber ? "#c8e8d8" : "#e8d8b0";
+
+  // City positions (relative coords in 0..1 box)
+  const CITY_POS = {
+    "长安":[0.18,0.28],"洛阳":[0.50,0.22],"邺城":[0.74,0.14],
+    "宛城":[0.42,0.48],"襄阳":[0.50,0.66],
+    "成都":[0.16,0.72],"建业":[0.84,0.58],
+  };
+
+  // Build city lookup from data
+  const cityMap = {};
+  (cities || []).forEach(c => { cityMap[c.name] = c; });
+
+  // Build faction stats
+  const factionStats = {};
+  (cities || []).forEach(c => {
+    if (!c.owner) return;
+    if (!factionStats[c.owner]) factionStats[c.owner] = { cities: 0, troops: 0 };
+    factionStats[c.owner].cities += 1;
+    factionStats[c.owner].troops += (c.troops || 0);
+  });
+
+  // Check if a faction has joined (is listed in agents)
+  const factionJoined = {};
+  (agents || []).forEach(a => { factionJoined[a.faction] = a.name; });
 
   return (
     <div className="hm-wrap">
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", background: mapBg }}>
-        {/* grid */}
+        {/* grid for cyber theme */}
         {isCyber && (
           <g stroke={gridColor} strokeWidth="0.5">
             {Array.from({ length: 14 }).map((_, i) => (
@@ -169,76 +57,55 @@ function HeroMap({ theme, lang }) {
             ))}
           </g>
         )}
+        {/* landmass strokes */}
         {!isCyber && (
-          // subtle landmass strokes
           <g fill="none" stroke={gridColor} strokeWidth={isInk ? 1 : 1.2}>
             <path d={`M 30 ${H * 0.4} Q ${W * 0.3} ${H * 0.2}, ${W * 0.55} ${H * 0.45} T ${W - 20} ${H * 0.6}`} />
             <path d={`M 50 ${H * 0.78} Q ${W * 0.35} ${H * 0.85}, ${W * 0.7} ${H * 0.78}`} opacity="0.6" />
           </g>
         )}
 
-        {/* edges between adjacent cities */}
-        <g stroke={isCyber ? "#1f3a32" : isInk ? "#cfc4ae" : "#3a2a1a"} strokeWidth="1" strokeDasharray={isCyber ? "0" : "2 3"}>
-          {Object.entries(HM_ADJ).flatMap(([from, tos]) =>
-            tos.map((to) => {
-              const a = CITIES.find((c) => c.id === from);
-              const b = CITIES.find((c) => c.id === to);
-              if (!a || !b || a.id > b.id) return null;
-              return <line key={from + "-" + to} x1={a.x * W} y1={a.y * H} x2={b.x * W} y2={b.y * H} />;
-            })
-          )}
+        {/* edges */}
+        <g stroke={isCyber ? "#1f3a32" : isInk ? "#cfc4ae" : "#3a2a1a"} strokeWidth="1.5" strokeDasharray={isCyber ? "0" : "4 3"}>
+          {HM_EDGES.map(([a, b]) => {
+            const pa = CITY_POS[a], pb = CITY_POS[b];
+            return <line key={a + "-" + b} x1={pa[0] * W} y1={pa[1] * H} x2={pb[0] * W} y2={pb[1] * H} />;
+          })}
         </g>
 
-        {/* attack arrow */}
-        {attack && (() => {
-          const a = CITIES.find((c) => c.id === attack.src);
-          const b = CITIES.find((c) => c.id === attack.tgt);
-          const stroke = FACTIONS[attack.atkFaction].color;
-          return (
-            <g>
-              <line x1={a.x * W} y1={a.y * H} x2={b.x * W} y2={b.y * H}
-                    stroke={stroke} strokeWidth="2.5" strokeDasharray="6 4">
-                <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="0.9s" repeatCount="indefinite" />
-              </line>
-              <circle cx={b.x * W} cy={b.y * H} r="14" fill="none" stroke={stroke} strokeWidth="2">
-                <animate attributeName="r" from="6" to="22" dur="0.9s" repeatCount="indefinite" />
-                <animate attributeName="opacity" from="1" to="0" dur="0.9s" repeatCount="indefinite" />
-              </circle>
-            </g>
-          );
-        })()}
-
         {/* cities */}
-        {CITIES.map((c) => {
-          const s = state[c.id];
-          const sty = cityStyle(c);
-          const pulse = s.flash > 0;
-          const r = isCyber ? 6 : 10;
+        {Object.entries(CITY_POS).map(([name, [cx, cy]]) => {
+          const c = cityMap[name];
+          const owner = c ? c.owner : null;
+          const troops = c ? c.troops : "?";
+          const f = owner ? FACTIONS[owner] : null;
+          const baseColor = f ? f.color : (isInk ? "#888" : isCyber ? "#5a6e66" : "#7a6a4a");
+          const r = isCyber ? 8 : 12;
+
+          const sty = isCyber
+            ? { fill: "#0d1110", stroke: baseColor, strokeWidth: 2 }
+            : isInk
+              ? { fill: baseColor, stroke: "#1a1614", strokeWidth: 1.5 }
+              : { fill: baseColor, stroke: "#1c1410", strokeWidth: 1.5 };
+
           return (
-            <g key={c.id} transform={`translate(${c.x * W}, ${c.y * H})`}>
-              {pulse && (
-                <circle r={r + 8} fill="none" stroke={sty.fill} strokeWidth="1.5" opacity="0.6">
-                  <animate attributeName="r" from={r + 4} to={r + 18} dur="1s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" from="0.7" to="0" dur="1s" repeatCount="indefinite" />
-                </circle>
-              )}
-              {isCyber ? (
-                <rect x={-r} y={-r} width={r * 2} height={r * 2} {...sty} />
-              ) : (
-                <circle r={r} {...sty} />
-              )}
-              <text y={isCyber ? -10 : -14} textAnchor="middle"
-                    fontSize={isCyber ? 9 : 11}
-                    fill={labelColor}
-                    fontFamily={isCyber ? "'JetBrains Mono', monospace" : "'Noto Serif SC', serif"}
-                    fontWeight={isInk ? 600 : 500}>
-                {lang === "中" ? c.id : c.en}
+            <g key={name} transform={`translate(${cx * W}, ${cy * H})`}>
+              {isCyber
+                ? <rect x={-r} y={-r} width={r * 2} height={r * 2} {...sty} />
+                : <circle r={r} {...sty} />
+              }
+              <text y={isCyber ? -12 : -17} textAnchor="middle"
+                fontSize={isCyber ? 9 : 12}
+                fill={labelColor}
+                fontFamily={isCyber ? "'JetBrains Mono', monospace" : "'Noto Serif SC', serif"}
+                fontWeight={isInk ? 600 : 500}>
+                {name}
               </text>
-              <text y={isCyber ? 18 : 22} textAnchor="middle"
-                    fontSize={isCyber ? 9 : 10}
-                    fill={s.owner ? FACTIONS[s.owner].color : (isInk ? "#888" : "#7a6a4a")}
-                    fontFamily="'JetBrains Mono', monospace">
-                {s.troops}
+              <text y={isCyber ? 22 : 25} textAnchor="middle"
+                fontSize={isCyber ? 9 : 11}
+                fill={owner ? (FACTIONS[owner] || {}).color || baseColor : (isInk ? "#888" : "#7a6a4a")}
+                fontFamily="'JetBrains Mono', monospace">
+                {troops}
               </text>
             </g>
           );
@@ -249,39 +116,81 @@ function HeroMap({ theme, lang }) {
       <div className="hm-hud">
         <div className="hm-tick">
           <span className="hm-tick-label">{lang === "中" ? "回合" : "TICK"}</span>
-          <span className="hm-tick-num">{String(tick).padStart(3, "0")}</span>
+          <span className="hm-tick-num">{String(tick || 0).padStart(3, "0")}</span>
         </div>
-        <div className="hm-ctrl">
-          <button className="hm-btn" onClick={() => setPaused((p) => !p)} title={paused ? "play" : "pause"}>
-            {paused ? "▶" : "❚❚"}
-          </button>
-        </div>
+        {status === "finished" && winner && (
+          <div className="hm-tick" style={{ marginLeft: 16 }}>
+            <span className="hm-tick-label">{lang === "中" ? "胜者" : "WINNER"}</span>
+            <span className="hm-tick-num" style={{ color: (FACTIONS[winner] || {}).color || "var(--gold)" }}>
+              {winner} {lang === "中" ? FACTIONS[winner].leader : ""}
+            </span>
+          </div>
+        )}
         <div className="hm-factions">
           {Object.entries(FACTIONS).map(([k, f]) => {
-            const cities = CITIES.filter((c) => state[c.id].owner === k).length;
-            const troops = CITIES.filter((c) => state[c.id].owner === k).reduce((s, c) => s + state[c.id].troops, 0);
+            const s = factionStats[k] || { cities: 0, troops: 0 };
+            const joined = factionJoined[k];
+            const dim = joined ? 1 : 0.4;
             return (
-              <div key={k} className="hm-faction" style={{ "--fc": f.color }}>
+              <div key={k} className="hm-faction" style={{ "--fc": f.color, opacity: dim }}>
                 <span className="hm-fdot" />
-                <span className="hm-fname">{lang === "中" ? f.leader : f.leaderEn}</span>
-                <span className="hm-fmeta">{cities}城 · {troops}</span>
+                <span className="hm-fname">{f.leader}</span>
+                <span className="hm-fmeta">
+                  {s.cities}城 · {s.troops}兵
+                  {!joined ? " (" + (lang === "中" ? "空缺" : "open") + ")" : ""}
+                </span>
               </div>
             );
           })}
         </div>
       </div>
 
+      {/* event log */}
       <div className="hm-log">
-        {eventLog.length === 0 && (
-          <div className="hm-log-empty">{lang === "中" ? "战事将启…" : "Awaiting orders…"}</div>
+        {(events || []).length === 0 && (diplomacy || []).length === 0 && (
+          <div className="hm-log-empty">{lang === "中" ? "等待对战开始…" : "Awaiting battle…"}</div>
         )}
-        {eventLog.map((e, i) => {
-          const fc = (FACTIONS[e.faction] && FACTIONS[e.faction].color) || "var(--ink-mute)";
+        {(diplomacy || []).slice(-3).map((d, i) => {
+          const fc = (FACTIONS[d.from_faction] || {}).color || "var(--ink-mute)";
           return (
-            <div key={i} className="hm-log-row" style={{ "--ec": fc, opacity: 1 - i * 0.18 }}>
+            <div key={"d" + i} className="hm-log-row" style={{ "--ec": fc }}>
               <span className="hm-log-dot" />
-              <span className="hm-log-kind">{e.kind === "diplo" ? "✉" : "⚔"}</span>
-              <span className="hm-log-text">{e.text}</span>
+              <span className="hm-log-kind">✉</span>
+              <span className="hm-log-text">
+                [{d.from_faction}]「{d.message}」
+              </span>
+            </div>
+          );
+        })}
+        {(events || []).slice(-5).map((e, i) => {
+          let text, kind, faction;
+          if (e.result === "captured") {
+            text = (lang === "中"
+              ? e.captured_by + " 攻占 " + e.city
+              : e.captured_by + " captured " + e.city);
+            kind = "⚔";
+            faction = e.captured_by;
+          } else if (e.result === "defended") {
+            text = (lang === "中"
+              ? e.defended_by + " 守住 " + e.city
+              : e.defended_by + " defended " + e.city);
+            kind = "🛡";
+            faction = e.defended_by;
+          } else if (e.type === "recruit") {
+            text = e.faction + " 在 " + e.city + " 招募";
+            kind = "📋";
+            faction = e.faction;
+          } else if (e.type === "march") {
+            text = e.faction + " 行军 " + (e.from || "") + "→" + (e.to || "");
+            kind = "🚶";
+            faction = e.faction;
+          } else { return null; }
+          const fc = (FACTIONS[faction] || {}).color || "var(--ink-mute)";
+          return (
+            <div key={"e" + i} className="hm-log-row" style={{ "--ec": fc }}>
+              <span className="hm-log-dot" />
+              <span className="hm-log-kind">{kind}</span>
+              <span className="hm-log-text">{text}</span>
             </div>
           );
         })}

@@ -1174,6 +1174,7 @@ def tick(session: Session, game_id: int):
     if len(active_owners) == 1:
         game.status = "finished"
         game.winner = active_owners.pop()
+        game.is_current = False
         session.add(game)
         session.commit()
 
@@ -1889,10 +1890,252 @@ def pvp_maybe_advance(session: Session, game_id: int):
                 auto_decide_managed(session, game_id, ma)
 
         # Check win condition (max ticks)
+        game = session.get(Game, game_id)
         if game and game.status != "finished" and game.tick >= game.max_ticks:
             _resolve_max_ticks(session, game_id)
+
+        # Auto-restart: if game just finished, create a fresh one
+        game = session.get(Game, game_id)
+        if game and game.status == "finished":
+            print(f"[pvp_tick] Game #{game_id} finished. Auto-creating new game...")
+            try:
+                get_or_create_current_game(session)
+            except Exception as e:
+                print(f"[pvp_tick] Auto-restart error: {e}")
     except ValueError as e:
         print(f"[pvp_tick] Error advancing tick: {e}")
+
+
+MANAGED_DEFAULTS = {
+    "蜀": {"name": "刘玄德", "persona": "你是一位仁德之主，以民为本，坚守蜀地，伺机北伐。"},
+    "魏": {"name": "曹孟德", "persona": "你是一位雄才大略的枭雄，挟天子以令诸侯，志在一统天下。"},
+    "吴": {"name": "孙仲谋", "persona": "你是一位善于权谋的江东之主，倚长江天险，伺机图取中原。"},
+}
+
+
+def get_or_create_current_game(session: Session) -> Game:
+    """Return the current active/waiting PvP game, or create a new one.
+
+    The current game is the one with is_current=True, mode=pvp,
+    and status in (waiting, active). If none exists, creates a fresh game
+    with three managed AI agents pre-joined.
+    """
+    game = session.exec(
+        select(Game).where(
+            Game.is_current == True,
+            Game.mode == "pvp",
+            Game.status.in_(["waiting", "active"]),
+        )
+    ).first()
+    if game:
+        return game
+
+    # Mark all old games as not current
+    old_games = session.exec(
+        select(Game).where(Game.is_current == True)
+    ).all()
+    for g in old_games:
+        g.is_current = False
+        session.add(g)
+
+    # Create a fresh game with all three managed AI agents
+    game = Game(
+        mode="pvp",
+        status="waiting",
+        auto_advance=True,
+        max_ticks=35,
+        is_current=True,
+    )
+    session.add(game)
+    session.flush()
+
+    # Initialize cities
+    for name in ALL_CITIES:
+        owner, troops = INITIAL_SETUP[name]
+        session.add(City(game_id=game.id, name=name, owner=owner, troops=troops))
+
+    resources = {
+        f: {
+            "grain": INITIAL_GRAIN.get(f, 500),
+            "debt": 0,
+            "trust_score": TRUST_INITIAL,
+        }
+        for f in FACTION_POOL
+    }
+    game.resources = json.dumps(resources, ensure_ascii=False)
+    session.add(game)
+
+    # Auto-register three managed agents (one per faction)
+    for faction in FACTION_POOL:
+        cfg = MANAGED_DEFAULTS[faction]
+        player = Player()
+        session.add(player)
+        session.flush()
+
+        reg = RegisteredAgent(
+            player_id=player.player_id,
+            agent_name=cfg["name"],
+        )
+        session.add(reg)
+        session.flush()
+
+        agent = Agent(
+            game_id=game.id,
+            registered_agent_id=reg.agent_id,
+            agent_name=cfg["name"],
+            faction=faction,
+            agent_mode="managed",
+            persona_config=cfg["persona"],
+        )
+        session.add(agent)
+
+    session.commit()
+    session.refresh(game)
+    return game
+
+
+def join_current_game(session: Session, name: str, faction: str, persona: str | None = None) -> dict:
+    """Join the current game as a managed agent, replacing the default AI for that faction."""
+    game = get_or_create_current_game(session)
+    if game.status not in ("waiting", "active"):
+        raise ValueError("当前对局不允许加入")
+
+    if faction not in FACTION_POOL:
+        raise ValueError(f"势力必须是: {FACTION_POOL}")
+
+    # Check if the faction already has a player (non-default AI name)
+    existing = session.exec(
+        select(Agent).where(Agent.game_id == game.id, Agent.faction == faction)
+    ).first()
+    if existing and existing.agent_name not in [
+        MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL
+    ]:
+        raise ValueError(f"势力 [{faction}] 已被玩家 [{existing.agent_name}] 占用")
+
+    # Remove the default AI agent if it exists
+    if existing:
+        # Delete any submitted actions from this agent for current tick
+        actions_to_del = session.exec(
+            select(Action).where(
+                Action.game_id == game.id,
+                Action.agent_id == existing.id,
+                Action.tick == game.tick,
+            )
+        ).all()
+        for a in actions_to_del:
+            session.delete(a)
+        session.delete(existing)
+        session.flush()
+
+    # Register new player
+    player = Player()
+    session.add(player)
+    session.flush()
+
+    reg = RegisteredAgent(
+        player_id=player.player_id,
+        agent_name=name,
+    )
+    session.add(reg)
+    session.flush()
+
+    agent = Agent(
+        game_id=game.id,
+        registered_agent_id=reg.agent_id,
+        agent_name=name,
+        faction=faction,
+        agent_mode="managed",
+        persona_config=persona,
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+
+    # If game was active with AI agents, trigger new agent's decision
+    if game.status == "active":
+        try:
+            auto_decide_managed(session, game.id, agent)
+        except Exception as e:
+            print(f"[join_current_game] agent {name} decision error: {e}")
+
+    return {
+        "token": agent.token,
+        "faction": agent.faction,
+        "game_id": game.id,
+        "player_id": player.player_id,
+    }
+
+
+def current_game_state(session: Session) -> dict:
+    """Public live state for the current game (homepage spectator view)."""
+    game = get_or_create_current_game(session)
+
+    cities = session.exec(select(City).where(City.game_id == game.id)).all()
+    agents = session.exec(select(Agent).where(Agent.game_id == game.id)).all()
+
+    events = []
+    if game.last_tick_events:
+        events = json.loads(game.last_tick_events)
+
+    diplomacy = []
+    if game.last_tick_diplomacy:
+        diplomacy = json.loads(game.last_tick_diplomacy)
+
+    intentions = []
+    if game.last_tick_intentions:
+        intentions = json.loads(game.last_tick_intentions)
+
+    # Check submitted status for each agent
+    agent_info = []
+    for a in agents:
+        existing = session.exec(
+            select(Action).where(
+                Action.game_id == game.id,
+                Action.agent_id == a.id,
+                Action.tick == game.tick,
+            )
+        ).first()
+        agent_info.append({
+            "id": a.id,
+            "name": a.agent_name,
+            "faction": a.faction,
+            "mode": a.agent_mode,
+            "submitted": existing is not None,
+        })
+
+    # Read resources for alliance info
+    resources_raw = {}
+    if game.resources:
+        resources_raw = json.loads(game.resources)
+
+    # Per-faction summary
+    factions_summary = {}
+    for f in FACTION_POOL:
+        owned = [c for c in cities if c.owner == f]
+        troops = sum(c.troops for c in owned)
+        fres = resources_raw.get(f, {})
+        factions_summary[f] = {
+            "cities": len(owned),
+            "troops": troops,
+            "alliance_with": fres.get("alliance_with"),
+        }
+
+    return {
+        "game_id": game.id,
+        "status": game.status,
+        "tick": game.tick,
+        "winner": game.winner,
+        "cities": [
+            {"name": c.name, "owner": c.owner, "troops": c.troops}
+            for c in cities
+        ],
+        "events": events,
+        "diplomacy": diplomacy,
+        "intentions": intentions,
+        "agents": agent_info,
+        "factions": factions_summary,
+        "max_ticks": game.max_ticks,
+    }
 
 
 def _resolve_max_ticks(session: Session, game_id: int):
@@ -1914,7 +2157,6 @@ def _resolve_max_ticks(session: Session, game_id: int):
             game.winner = winners[0]
             game.status = "finished"
         else:
-            # Tie: total troops
             faction_troops: dict[str, int] = defaultdict(int)
             for c in cities:
                 if c.owner:
@@ -1922,5 +2164,8 @@ def _resolve_max_ticks(session: Session, game_id: int):
             winner = max(faction_troops, key=faction_troops.get)
             game.winner = winner
             game.status = "finished"
+
+    # Mark as not current so next poll triggers a new game
+    game.is_current = False
     session.add(game)
     session.commit()

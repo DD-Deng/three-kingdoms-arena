@@ -6,3 +6,15 @@ __pycache__/
 logs/
 .vscode/
 integration_prompt.txt
+scripts/debug_one.py
+scripts/live_battle.py
+scripts/run3.py
+scripts/test_mock.py
+scripts/migrate_logs.py
+cc_arena_fix.txt
+cc_fix_prompt.txt
+cc_prompt.txt
+cc_quickjoin_prompt.txt
+fix_bugs_prompt.txt
+frontend_prompt.txt
+pvp_lobby_prompt.txt

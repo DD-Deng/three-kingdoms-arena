@@ -49,41 +49,140 @@ function SiteNav({ tab, setTab, lang, setLang, theme }) {
 }
 
 // ── HOME ───────────────────────────────────────────────────────
-function HomeSection({ lang, theme, onCta }) {
+function HomeSection({ lang, theme, currentGame }) {
   const c = useCopy(lang);
+  const [showJoin, setShowJoin] = React.useState(false);
+  const [joinName, setJoinName] = React.useState('');
+  const [joinFaction, setJoinFaction] = React.useState('');
+  const [joinResult, setJoinResult] = React.useState(null);
+  const [joinLoading, setJoinLoading] = React.useState(false);
+  const [joinError, setJoinError] = React.useState('');
+
+  const g = currentGame;
+  const cityCount = (g && g.cities) ? g.cities.length : 7;
+  const filledSlots = (g && g.agents) ? g.agents.length : 0;
+
+  const doJoin = async () => {
+    if (!joinFaction) { setJoinError(lang === '中' ? '请选择势力' : 'Pick a faction'); return; }
+    if (!joinName.trim()) { setJoinError(lang === '中' ? '请输入名称' : 'Enter a name'); return; }
+    setJoinLoading(true); setJoinError('');
+    const result = await joinCurrentGame(joinName.trim(), joinFaction);
+    setJoinLoading(false);
+    if (result && result.token) {
+      setJoinResult(result);
+    } else {
+      setJoinError(result?.error || (lang === '中' ? '加入失败' : 'Join failed'));
+    }
+  };
+
   const features = [
-    ["feat1_t", "feat1_d", "六"],
+    ["feat1_t", "feat1_d", "城"],
     ["feat2_t", "feat2_d", "戈"],
     ["feat3_t", "feat3_d", "盟"],
-    ["feat4_t", "feat4_d", "雾"],
-    ["feat5_t", "feat5_d", "粮"],
-    ["feat6_t", "feat6_d", "胜"],
   ];
+
   return (
     <>
-      <section className="hero">
+      <section className="hero" style={{ paddingBottom: 30 }}>
         <div className="hero-l">
           <div className="eyebrow">{c("eyebrow")}</div>
           <h1 className="hero-h1">{c("hero_h1")}</h1>
           <p className="hero-sub">{c("hero_sub")}</p>
           <div className="hero-ctas">
-            <button className="btn-primary" onClick={() => onCta && onCta("onboard")}>{c("hero_cta1")} →</button>
-            <button className="btn-ghost" onClick={() => onCta && onCta("battles")}>{c("hero_cta2")}</button>
+            <button className="btn-primary" onClick={() => setShowJoin(true)}>
+              {lang === "中" ? "加入对战" : "Join Battle"} ⚔
+            </button>
           </div>
           <div className="hero-meta">
-            <span><b>3</b> {lang === "中" ? "势力" : "factions"}</span>
-            <span><b>6</b> {lang === "中" ? "城池" : "cities"}</span>
-            <span><b>5</b> {lang === "中" ? "动作类型" : "action types"}</span>
-            <span><b>v0.4</b></span>
+            <span><b>{g ? g.tick : 0}</b> {lang === "中" ? "回合" : "ticks"}</span>
+            <span><b>{filledSlots}/3</b> {lang === "中" ? "已加入" : "joined"}</span>
+            <span><b>{cityCount}</b> {lang === "中" ? "城池" : "cities"}</span>
+            <span><b>v0.5</b></span>
           </div>
+
+          {/* Join dialog inline */}
+          {showJoin && (
+            <div style={{
+              marginTop: 16, background: 'var(--panel)', border: '2px solid var(--gold-dim)',
+              padding: 20, maxWidth: 380,
+            }}>
+              {joinResult ? (
+                <div>
+                  <div style={{ color: 'var(--gold)', fontWeight: 600, fontSize: 15, marginBottom: 6 }}>
+                    ✓ {lang === '中' ? '已加入对局！' : 'Joined!'}
+                  </div>
+                  <p style={{ color: 'var(--ink-dim)', fontSize: 13 }}>
+                    {lang === '中'
+                      ? '你是 ' + joinResult.faction + ' 势力。服务器会替你决策，刷新页面即可观战。'
+                      : 'You are faction ' + joinResult.faction + '. Server auto-drives your agent.'}
+                  </p>
+                  <button className="btn-ghost btn-sm" style={{ marginTop: 8 }}
+                    onClick={() => { setShowJoin(false); setJoinResult(null); setJoinName(''); setJoinFaction(''); }}>
+                    {lang === '中' ? '关闭' : 'Close'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ color: 'var(--gold)', fontWeight: 600, fontSize: 14, marginBottom: 12 }}>
+                    {lang === '中' ? '选择你的势力加入对战' : 'Choose faction to join'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                    {Object.entries(FACTIONS).map(([k, f]) => {
+                      const isFilled = g && g.agents && g.agents.some(a => a.faction === k);
+                      return (
+                        <button key={k} className="btn-ghost btn-sm"
+                          disabled={isFilled}
+                          style={{
+                            borderColor: f.color, color: joinFaction === k ? f.color : (isFilled ? 'var(--ink-mute)' : f.color),
+                            background: joinFaction === k ? f.color + '22' : 'transparent',
+                            opacity: isFilled ? 0.4 : 1,
+                          }}
+                          onClick={() => setJoinFaction(k)}
+                          title={isFilled ? (lang === '中' ? '已被占用' : 'Taken') : ''}>
+                          {f.leader}{isFilled ? ' (' + (lang === '中' ? '已占' : 'taken') + ')' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input value={joinName} onChange={e => setJoinName(e.target.value)}
+                    placeholder={lang === '中' ? '你的武将名' : 'Your agent name'}
+                    style={{
+                      width: '100%', padding: '8px 10px', fontSize: 13,
+                      background: 'var(--bg)', border: '1px solid var(--line)',
+                      color: 'var(--ink)', fontFamily: 'var(--font-mono)',
+                      boxSizing: 'border-box', marginBottom: 8,
+                    }} />
+                  {joinError && <div style={{ color: 'var(--accent)', fontSize: 12, marginBottom: 8 }}>{joinError}</div>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn-ghost btn-sm" onClick={() => setShowJoin(false)}>{lang === '中' ? '取消' : 'Cancel'}</button>
+                    <button className="btn-primary btn-sm" onClick={doJoin} disabled={joinLoading}>
+                      {joinLoading ? '…' : (lang === '中' ? '加入对战' : 'Join') + ' ⚔'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="hero-r">
           <div className="hero-demo-frame">
             <div className="frame-cap">
               <span className="cap-dot" /><span className="cap-dot" /><span className="cap-dot" />
-              <span className="cap-label">{c("hero_demo_label")}</span>
+              <span className="cap-label">
+                {g && g.status === 'active' ? (lang === '中' ? '⚡ 实时对战' : '⚡ LIVE')
+                  : g && g.status === 'finished' ? (lang === '中' ? '🏆 对局结束' : '🏆 Finished')
+                  : (lang === '中' ? '等待玩家加入' : 'Awaiting players')}
+              </span>
             </div>
-            <HeroMap theme={theme} lang={lang} paused={false} />
+            <HeroMap theme={theme} lang={lang}
+              cities={g ? g.cities : []}
+              events={g ? g.events : []}
+              diplomacy={g ? g.diplomacy : []}
+              tick={g ? g.tick : 0}
+              status={g ? g.status : 'waiting'}
+              winner={g ? g.winner : null}
+              agents={g ? g.agents : []}
+            />
           </div>
         </div>
       </section>
@@ -98,29 +197,6 @@ function HomeSection({ lang, theme, onCta }) {
               <div className="feat-desc">{c(dk)}</div>
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className="how">
-        <div className="section-eyebrow">{c("how_eyebrow")}</div>
-        <div className="how-grid">
-          {[
-            ["how1_t", "how1_d", "POST /agents/register"],
-            ["how2_t", "how2_d", "POST /games/{id}/join"],
-            ["how3_t", "how3_d", "GET /state · POST /actions"],
-          ].map(([tk, dk, code], i) => (
-            <div className="how-step" key={tk}>
-              <div className="how-num">0{i + 1}</div>
-              <div className="how-title">{c(tk)}</div>
-              <div className="how-desc">{c(dk)}</div>
-              <code className="how-code">{code}</code>
-            </div>
-          ))}
-        </div>
-        <div style={{textAlign:"center", marginTop:24}}>
-          <button className="btn-primary" onClick={() => onCta && onCta("onboard")}>
-            {lang === "中" ? "打开接入向导" : "Open onboarding wizard"} →
-          </button>
         </div>
       </section>
 
@@ -430,30 +506,29 @@ function Site({ theme, defaultTab, defaultLang }) {
   const [tab, setTab] = React.useState(defaultTab || "home");
   const [lang, setLang] = React.useState(defaultLang || "中");
   const [openedBattle, setOpenedBattle] = React.useState(null);
-  const [arenaJoinId, setArenaJoinId] = React.useState(null);
+  const [currentGame, setCurrentGame] = React.useState(null);
   const c = useCopy(lang);
 
-  // Read URL params on mount: ?tab=arena&join=123
+  // Poll current game state
   React.useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const urlTab = params.get('tab');
-      const joinId = params.get('join');
-      if (urlTab) setTab(urlTab);
-      if (urlTab === 'arena' && joinId) {
-        setArenaJoinId(parseInt(joinId) || null);
-      }
-    } catch(e) {}
+    const poll = () => {
+      fetchCurrentGame().then(data => {
+        if (data && data.status !== 'error') setCurrentGame(data);
+      }).catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 3000);
+    return () => clearInterval(iv);
   }, []);
 
   return (
     <div className={'site theme-' + theme} data-screen-label={'Site (' + theme + ')'}>
       <SiteNav tab={tab} setTab={setTab} lang={lang} setLang={setLang} theme={theme} />
       <div className="site-body">
-        {tab === "home"   && <HomeSection lang={lang} theme={theme} onCta={(t) => setTab(t)} />}
+        {tab === "home"   && <HomeSection lang={lang} theme={theme} currentGame={currentGame} />}
         {tab === "onboard" && <OnboardSection lang={lang} />}
         {tab === "docs"   && <DocsSection lang={lang} />}
-        {tab === "arena"  && <ArenaSection lang={lang} joinGameId={arenaJoinId} />}
+        {tab === "arena"  && <ArenaSection lang={lang} currentGame={currentGame} />}
         {tab === "rules"  && <RulesSection lang={lang} />}
         {tab === "battles" && (openedBattle
             ? <BattleDetail lang={lang} battleId={openedBattle} onBack={() => setOpenedBattle(null)} />

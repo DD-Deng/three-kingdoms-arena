@@ -337,147 +337,20 @@ async function apiCreateGame() {
 }
 
 // ── PvP Arena API functions ──────────────────────────────────
-async function fetchLobby() {
+async function fetchCurrentGame() {
   try {
-    const resp = await fetch(apiUrl('/lobby'));
-    if (!resp.ok) throw new Error('API error');
-    const data = await resp.json();
-    return data.games || [];
-  } catch (e) {
-    console.error('fetchLobby error:', e);
-    return [];
-  }
-}
-
-async function createPvpGame(title, playerId, agentName, faction, persona, maxTicks) {
-  try {
-    const resp = await fetch(apiUrl('/games/create'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        player_id: playerId,
-        agent_name: agentName || '\u623F\u4E3B',
-        faction: faction || null,
-        persona: persona || null,
-        max_ticks: maxTicks || 35,
-      }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return { error: err.detail || 'Create failed' };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.error('createPvpGame error:', e);
-    return { error: 'Network error' };
-  }
-}
-
-async function joinManaged(gameId, playerId, agentName, faction, llmConfig, persona) {
-  try {
-    const resp = await fetch(apiUrl('/games/' + gameId + '/join-managed'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        player_id: playerId,
-        agent_name: agentName,
-        faction,
-        llm_config: llmConfig,
-        persona,
-      }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return { error: err.detail || 'Join failed' };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.error('joinManaged error:', e);
-    return { error: 'Network error' };
-  }
-}
-
-async function joinSelfHosted(gameId, agentId, secret, faction) {
-  try {
-    const resp = await fetch(apiUrl('/games/' + gameId + '/join-selfhosted'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: agentId, secret, faction }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return { error: err.detail || 'Join failed' };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.error('joinSelfHosted error:', e);
-    return { error: 'Network error' };
-  }
-}
-
-async function startGame(gameId, token) {
-  try {
-    const resp = await fetch(apiUrl('/games/' + gameId + '/start'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return { error: err.detail || 'Start failed' };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.error('startGame error:', e);
-    return { error: 'Network error' };
-  }
-}
-
-async function fetchLiveGame(gameId) {
-  try {
-    const resp = await fetch(apiUrl('/games/' + gameId + '/live'));
+    const resp = await fetch(apiUrl('/current-game'));
     if (!resp.ok) throw new Error('API error');
     return await resp.json();
   } catch (e) {
-    console.error('fetchLiveGame error:', e);
+    console.error('fetchCurrentGame error:', e);
     return null;
   }
 }
 
-async function fetchMyGames(playerId) {
+async function joinCurrentGame(name, faction) {
   try {
-    const resp = await fetch(apiUrl('/my-games?player_id=' + encodeURIComponent(playerId)));
-    if (!resp.ok) throw new Error('API error');
-    const data = await resp.json();
-    return data.games || [];
-  } catch (e) {
-    console.error('fetchMyGames error:', e);
-    return [];
-  }
-}
-
-async function surrenderGame(gameId, token) {
-  try {
-    const resp = await fetch(apiUrl('/games/' + gameId + '/surrender'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return { error: err.detail || 'Surrender failed' };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.error('surrenderGame error:', e);
-    return { error: 'Network error' };
-  }
-}
-
-async function apiQuickJoin(gameId, name, faction) {
-  try {
-    const resp = await fetch(apiUrl('/join/' + gameId), {
+    const resp = await fetch(apiUrl('/join'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, faction }),
@@ -488,7 +361,7 @@ async function apiQuickJoin(gameId, name, faction) {
     }
     return await resp.json();
   } catch (e) {
-    console.error('apiQuickJoin error:', e);
+    console.error('joinCurrentGame error:', e);
     return { error: 'Network error' };
   }
 }
@@ -596,9 +469,7 @@ Object.assign(window, {
   BATTLES_PLACEHOLDER, LEADERBOARD_PLACEHOLDER,
   fetchBattles, fetchBattleDetail, fetchLeaderboard,
   apiRegister, apiCreateGame, apiJoinGame,
-  fetchLobby, createPvpGame, joinManaged, joinSelfHosted, startGame,
-  fetchLiveGame, fetchMyGames, surrenderGame, updateAgentConfig,
-  apiQuickJoin, buildBridgeInstruction,
+  fetchCurrentGame, joinCurrentGame, buildBridgeInstruction,
   apiUrl, formatTime,
   t,
 });
