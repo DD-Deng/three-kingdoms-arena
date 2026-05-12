@@ -67,6 +67,42 @@ class Game(SQLModel, table=True):
     tick_timeout_sec: int = Field(default=60)
     is_current: bool = Field(default=True)            # 标记为当前活跃对局
 
+    # Lobby / BYOA fields
+    is_active: bool = Field(default=False)            # 当前正在进行的对局（有且仅有一个）
+    started_at: Optional[str] = Field(default=None)
+    finished_at: Optional[str] = Field(default=None)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Slot —— 阵营槽位（每局 3 个，先到先得）
+# ═══════════════════════════════════════════════════════════════
+
+class Slot(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    game_id: int = Field(foreign_key="game.id")
+    faction: str  # 蜀 | 魏 | 吴
+    status: str = Field(default="open")  # open | occupied | disconnected
+    session_token: Optional[str] = Field(default=None, index=True)
+    last_heartbeat_at: Optional[str] = Field(default=None)
+    occupied_by_ip: Optional[str] = Field(default=None)
+    occupied_by_persona_hash: Optional[str] = Field(default=None)
+    joined_at: Optional[str] = Field(default=None)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Session —— 接入会话（BYOA agent 的身份凭证）
+# ═══════════════════════════════════════════════════════════════
+
+class Session(SQLModel, table=True):
+    session_token: str = Field(primary_key=True)
+    game_id: int = Field(foreign_key="game.id")
+    faction: str  # 蜀 | 魏 | 吴 | spectator
+    status: str = Field(default="active")  # active | disconnected | kicked | finished
+    heartbeat_at: Optional[str] = Field(default=None)
+    ip: Optional[str] = Field(default=None)
+    ua: Optional[str] = Field(default=None)
+    created_at: str = Field(default_factory=_now)
+
 
 # ═══════════════════════════════════════════════════════════════
 # Agent —— 对局参与者（关联已注册 agent）

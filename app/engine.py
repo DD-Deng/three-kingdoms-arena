@@ -1175,8 +1175,17 @@ def tick(session: Session, game_id: int):
         game.status = "finished"
         game.winner = active_owners.pop()
         game.is_current = False
+        game.is_active = False
+        game.finished_at = datetime.now(timezone.utc).isoformat()
         session.add(game)
         session.commit()
+
+        # Trigger lobby restart
+        try:
+            from . import lobby
+            lobby.finish_game(session, game)
+        except Exception:
+            pass
 
     return {
         "tick": game.tick,
@@ -1970,9 +1979,15 @@ def pvp_maybe_advance(session: Session, game_id: int):
         if game and game.status == "finished":
             print(f"[pvp_tick] Game #{game_id} finished. Auto-creating new game...")
             try:
-                get_or_create_current_game(session)
+                from . import lobby
+                lobby.check_and_restart_game(session, game_id)
             except Exception as e:
                 print(f"[pvp_tick] Auto-restart error: {e}")
+                # Fallback to old method
+                try:
+                    get_or_create_current_game(session)
+                except Exception:
+                    pass
     except ValueError as e:
         print(f"[pvp_tick] Error advancing tick: {e}")
 
@@ -2014,8 +2029,10 @@ def get_or_create_current_game(session: Session) -> Game:
         mode="pvp",
         status="waiting",
         auto_advance=True,
-        max_ticks=35,
+        max_ticks=50,
         is_current=True,
+        is_active=True,
+        started_at=datetime.now(timezone.utc).isoformat(),
     )
     session.add(game)
     session.flush()
@@ -2059,6 +2076,16 @@ def get_or_create_current_game(session: Session) -> Game:
             persona_config=cfg["persona"],
         )
         session.add(agent)
+
+    # Create 3 open slots
+    from .models import Slot
+    for faction in FACTION_POOL:
+        slot = Slot(
+            game_id=game.id,
+            faction=faction,
+            status="open",
+        )
+        session.add(slot)
 
     session.commit()
     session.refresh(game)
@@ -2254,5 +2281,14 @@ def _resolve_max_ticks(session: Session, game_id: int):
 
     # Mark as not current so next poll triggers a new game
     game.is_current = False
+    game.is_active = False
+    game.finished_at = datetime.now(timezone.utc).isoformat()
     session.add(game)
     session.commit()
+
+    # Trigger lobby restart
+    try:
+        from . import lobby
+        lobby.finish_game(session, game)
+    except Exception:
+        pass

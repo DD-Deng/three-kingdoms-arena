@@ -13,6 +13,8 @@ from .models import Agent, BattleHistory, BattleLogFile
 from . import engine as eng
 from .admin import router as admin_router
 from .public import router as public_router
+from .lobby_routes import router as lobby_router
+from . import lobby
 
 import json
 
@@ -42,6 +44,7 @@ app.add_middleware(
 # 注册 API 路由
 app.include_router(admin_router)
 app.include_router(public_router)
+app.include_router(lobby_router)
 
 # 静态文件 (SPA 前端) — routes take priority, static is fallback
 static_dir = Path(__file__).parent.parent / "static"
@@ -112,9 +115,15 @@ def join_game(
 def get_state(
     game_id: int,
     token: str,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     agent = _auth(session, game_id, token)
+    # Auto-update heartbeat for BYOA sessions
+    try:
+        lobby.update_heartbeat(session, token)
+    except Exception:
+        pass
     try:
         return eng.get_state(session, game_id, agent)
     except ValueError as e:
