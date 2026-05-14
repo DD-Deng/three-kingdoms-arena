@@ -204,7 +204,9 @@ def join_game(
         raise ValueError("secret 不正确")
 
     existing = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.faction == faction)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.faction == faction, Agent.is_active == True
+        )
     ).first()
     if existing:
         raise ValueError(f"势力 [{faction}] 已被占用")
@@ -244,7 +246,9 @@ def get_state(session: Session, game_id: int, agent: Agent):
         game = session.get(Game, game_id)  # re-fetch — may have been modified
 
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
-    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
+    ).all()
 
     your_faction = agent.faction
 
@@ -762,7 +766,9 @@ def tick(session: Session, game_id: int):
     if game.status == "finished":
         raise ValueError("对局已结束")
 
-    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
+    ).all()
     if len(agents) == 0:
         raise ValueError("没有 agent 加入，无法推进")
 
@@ -1351,7 +1357,9 @@ def lobby_list_games(session: Session) -> list[dict]:
     ).all()
     result = []
     for g in games:
-        agents = session.exec(select(Agent).where(Agent.game_id == g.id)).all()
+        agents = session.exec(
+            select(Agent).where(Agent.game_id == g.id, Agent.is_active == True)
+        ).all()
         slots = {}
         for f in FACTION_POOL:
             match = [a for a in agents if a.faction == f]
@@ -1502,7 +1510,9 @@ def pvp_join_managed(
         raise ValueError(f"势力必须是: {FACTION_POOL}")
 
     existing = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.faction == faction)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.faction == faction, Agent.is_active == True
+        )
     ).first()
     if existing:
         raise ValueError(f"势力 [{faction}] 已被占用")
@@ -1566,7 +1576,9 @@ def pvp_join_selfhosted(
         raise ValueError("secret 不正确")
 
     existing = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.faction == faction)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.faction == faction, Agent.is_active == True
+        )
     ).first()
     if existing:
         raise ValueError(f"势力 [{faction}] 已被占用")
@@ -1635,7 +1647,9 @@ def pvp_start_game(session: Session, game_id: int, token: str) -> dict:
         raise ValueError("对局已开始")
 
     agent = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.token == token)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.token == token, Agent.is_active == True
+        )
     ).first()
     if agent is None:
         raise ValueError("无效 token")
@@ -1652,6 +1666,7 @@ def pvp_start_game(session: Session, game_id: int, token: str) -> dict:
         select(Agent).where(
             Agent.game_id == game_id,
             Agent.agent_mode == "managed",
+            Agent.is_active == True,
         )
     ).all()
     for ma in managed:
@@ -1706,7 +1721,9 @@ def surrender_agent(session: Session, game_id: int, token: str) -> dict:
     if game is None:
         raise ValueError("对局不存在")
     agent = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.token == token)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.token == token, Agent.is_active == True
+        )
     ).first()
     if agent is None:
         raise ValueError("无效 token")
@@ -1729,7 +1746,9 @@ def live_game_state(session: Session, game_id: int) -> dict:
         raise ValueError("对局不存在")
 
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
-    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
+    ).all()
 
     events = []
     if game.last_tick_events:
@@ -1995,7 +2014,9 @@ def pvp_maybe_advance(session: Session, game_id: int):
     now_iso = now_dt.isoformat()
 
     slots = session.exec(select(SlotModel).where(SlotModel.game_id == game_id)).all()
-    agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
+    ).all()
 
     occupied_factions = {s.faction for s in slots if s.status == "occupied"}
 
@@ -2018,6 +2039,7 @@ def pvp_maybe_advance(session: Session, game_id: int):
         managed = session.exec(
             select(Agent).where(
                 Agent.game_id == game_id, Agent.agent_mode == "managed",
+                Agent.is_active == True,
             )
         ).all()
         for ma in managed:
@@ -2077,6 +2099,7 @@ def pvp_maybe_advance(session: Session, game_id: int):
             managed_agents = session.exec(
                 select(Agent).where(
                     Agent.game_id == game_id, Agent.agent_mode == "managed",
+                    Agent.is_active == True,
                 )
             ).all()
             for ma in managed_agents:
@@ -2212,7 +2235,9 @@ def get_or_create_current_game(session: Session) -> Game:
     session.commit()
 
     # Trigger first decisions for all managed agents
-    agents = session.exec(select(Agent).where(Agent.game_id == game.id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game.id, Agent.is_active == True)
+    ).all()
     for a in agents:
         try:
             auto_decide_managed(session, game.id, a)
@@ -2233,7 +2258,9 @@ def join_current_game(session: Session, name: str, faction: str, persona: str | 
 
     # Check if the faction already has a player (non-default AI name)
     existing = session.exec(
-        select(Agent).where(Agent.game_id == game.id, Agent.faction == faction)
+        select(Agent).where(
+            Agent.game_id == game.id, Agent.faction == faction, Agent.is_active == True
+        )
     ).first()
     if existing and existing.agent_name not in [
         MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL
@@ -2304,7 +2331,9 @@ def current_game_state(session: Session) -> dict:
         game = session.get(Game, game.id)
 
     cities = session.exec(select(City).where(City.game_id == game.id)).all()
-    agents = session.exec(select(Agent).where(Agent.game_id == game.id)).all()
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game.id, Agent.is_active == True)
+    ).all()
 
     events = []
     if game.last_tick_events:

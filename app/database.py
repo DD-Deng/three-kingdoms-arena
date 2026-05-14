@@ -9,21 +9,35 @@ engine = create_engine(DATABASE_URL, echo=False)
 def _migrate():
     """Add new columns/tables that may be missing from an existing DB."""
     with engine.connect() as conn:
-        # Check existing game columns
         inspector = inspect(engine)
         game_cols = {c["name"] for c in inspector.get_columns("game")} if "game" in inspector.get_table_names() else set()
+        agent_cols = {c["name"] for c in inspector.get_columns("agent")} if "agent" in inspector.get_table_names() else set()
 
         # Add new columns to game table if missing
-        migrations = [
+        game_migrations = [
             ("is_active", "BOOLEAN DEFAULT 0"),
             ("started_at", "TEXT"),
             ("finished_at", "TEXT"),
             ("tick_started_at", "TEXT"),
         ]
-        for col_name, col_type in migrations:
+        for col_name, col_type in game_migrations:
             if col_name not in game_cols:
                 try:
                     conn.execute(text(f"ALTER TABLE game ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                except Exception:
+                    pass
+
+        # Add soft-delete columns to agent table if missing
+        agent_migrations = [
+            ("is_active", "BOOLEAN DEFAULT 1"),
+            ("deactivated_at", "TEXT"),
+            ("deactivated_reason", "TEXT"),
+        ]
+        for col_name, col_type in agent_migrations:
+            if col_name not in agent_cols:
+                try:
+                    conn.execute(text(f"ALTER TABLE agent ADD COLUMN {col_name} {col_type}"))
                     conn.commit()
                 except Exception:
                     pass

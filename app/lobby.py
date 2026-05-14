@@ -96,7 +96,7 @@ def _create_active_game(session: Session) -> Game:
 def _ensure_managed_agents(session: Session, game: Game):
     """Ensure each faction has a managed AI agent if the slot is not player-occupied."""
     existing_agents = session.exec(
-        select(Agent).where(Agent.game_id == game.id)
+        select(Agent).where(Agent.game_id == game.id, Agent.is_active == True)
     ).all()
     existing_factions = {a.faction for a in existing_agents}
 
@@ -132,6 +132,7 @@ def _trigger_managed_decisions(session: Session, game: Game):
         select(Agent).where(
             Agent.game_id == game.id,
             Agent.agent_mode == "managed",
+            Agent.is_active == True,
         )
     ).all()
     for a in agents:
@@ -163,6 +164,19 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
     for s in sessions:
         s.status = "finished"
         session.add(s)
+
+    # Deactivate all active agents for this game
+    agents = session.exec(
+        select(Agent).where(
+            Agent.game_id == game.id,
+            Agent.is_active == True,
+        )
+    ).all()
+    for a in agents:
+        a.is_active = False
+        a.deactivated_at = _now()
+        a.deactivated_reason = "game_ended"
+        session.add(a)
 
     # Release all slots
     slots = session.exec(
@@ -259,6 +273,21 @@ def get_lobby_status(session: Session) -> dict:
                     s.occupied_by_ip = None
                     s.occupied_by_persona_hash = None
                     session.add(s)
+
+                    # Deactivate stale agents for this faction so re-join won't 409
+                    stale_agents = session.exec(
+                        select(Agent).where(
+                            Agent.game_id == s.game_id,
+                            Agent.faction == s.faction,
+                            Agent.is_active == True,
+                        )
+                    ).all()
+                    for agent in stale_agents:
+                        agent.is_active = False
+                        agent.deactivated_at = _now()
+                        agent.deactivated_reason = "slot_released"
+                        session.add(agent)
+
                     session.commit()
                     status = "open"
                     info = {"status": "open", "occupied_since": s.joined_at}
@@ -459,7 +488,11 @@ def _register_player_agent(
     """Register a self-hosted agent for the joining player, replacing any managed AI."""
     # Remove existing managed AI agent for this faction
     existing_agents = session.exec(
-        select(Agent).where(Agent.game_id == game.id, Agent.faction == faction)
+        select(Agent).where(
+            Agent.game_id == game.id,
+            Agent.faction == faction,
+            Agent.is_active == True,
+        )
     ).all()
     default_names = [eng.MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL]
     for a in existing_agents:
@@ -641,6 +674,7 @@ def get_session_agent(session: Session, token: str) -> Agent:
         select(Agent).where(
             Agent.game_id == sess.game_id,
             Agent.token == token,
+            Agent.is_active == True,
         )
     ).first()
     if agent is None:

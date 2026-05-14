@@ -122,6 +122,11 @@ class Agent(SQLModel, table=True):
     llm_config: Optional[str] = Field(default=None)   # JSON — LLM provider config
     persona_config: Optional[str] = Field(default=None)  # JSON — persona description
 
+    # Soft delete — preserve historical records for commentary/replay/stats
+    is_active: bool = Field(default=True)
+    deactivated_at: Optional[str] = Field(default=None)
+    deactivated_reason: Optional[str] = Field(default=None)  # slot_released / game_ended / manual
+
 
 # ═══════════════════════════════════════════════════════════════
 # City —— 城池

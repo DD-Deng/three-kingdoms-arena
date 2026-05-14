@@ -100,7 +100,9 @@ def root():
 
 def _auth(session: Session, game_id: int, token: str) -> Agent:
     agent = session.exec(
-        select(Agent).where(Agent.game_id == game_id, Agent.token == token)
+        select(Agent).where(
+            Agent.game_id == game_id, Agent.token == token, Agent.is_active == True
+        )
     ).first()
     if agent is None:
         raise HTTPException(status_code=401, detail="无效 token")
