@@ -65,6 +65,7 @@ class Game(SQLModel, table=True):
     title: Optional[str] = Field(default=None)
     max_ticks: int = Field(default=35)
     tick_timeout_sec: int = Field(default=60)
+    tick_started_at: Optional[str] = Field(default=None)  # ISO timestamp when current tick began
     is_current: bool = Field(default=True)            # 标记为当前活跃对局
 
     # Lobby / BYOA fields

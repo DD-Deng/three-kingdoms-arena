@@ -290,6 +290,6 @@ Token 通过 `POST /v1/lobby/join` 获取，30 分钟有效。
 - 每城每回合最多招募 200 兵
 - diplomacy message 最长 500 字符（message 类型）/ 200 字符（其他外交类型）
 - 不可攻击盟友的城
-- 一回合 5 秒，4 秒内提交动作
+- 一回合最长 8 秒，所有已加入玩家提交后立即推进。超时未提交视为无操作
 """
     return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")

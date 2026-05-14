@@ -18,6 +18,7 @@ def _migrate():
             ("is_active", "BOOLEAN DEFAULT 0"),
             ("started_at", "TEXT"),
             ("finished_at", "TEXT"),
+            ("tick_started_at", "TEXT"),
         ]
         for col_name, col_type in migrations:
             if col_name not in game_cols:

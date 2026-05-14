@@ -237,6 +237,12 @@ def get_state(session: Session, game_id: int, agent: Agent):
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
+
+    # Drive tick advancement on every state poll (timeout-based)
+    if game.mode == "pvp":
+        pvp_maybe_advance(session, game_id)
+        game = session.get(Game, game_id)  # re-fetch — may have been modified
+
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
     agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
 
@@ -353,6 +359,42 @@ def get_state(session: Session, game_id: int, agent: Agent):
     # ── 宣战信息: 是否有人对你宣战 ────────────────────────
     war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
 
+    # ── Tick timing diagnostics ────────────────────────────
+    from .config import TICK_TIMEOUT_SEC
+    from .models import Slot as SlotModel
+
+    tick_elapsed_sec = None
+    if game.tick_started_at:
+        try:
+            started = datetime.fromisoformat(game.tick_started_at)
+            tick_elapsed_sec = round(
+                (datetime.now(timezone.utc) - started).total_seconds(), 1
+            )
+        except Exception:
+            pass
+
+    waiting_for: list[str] = []
+    if game.mode == "pvp":
+        slots = session.exec(
+            select(SlotModel).where(SlotModel.game_id == game_id)
+        ).all()
+        occupied_factions = {s.faction for s in slots if s.status == "occupied"}
+        for a in agents:
+            if a.faction not in occupied_factions:
+                continue
+            existing = session.exec(
+                select(Action).where(
+                    Action.game_id == game_id,
+                    Action.agent_id == a.id,
+                    Action.tick == game.tick,
+                )
+            ).first()
+            if existing is None:
+                waiting_for.append(a.faction)
+
+    game_paused = game.status == "paused"
+    paused_reason = "没有玩家在线" if game_paused else None
+
     return {
         "tick": game.tick,
         "status": game.status,
@@ -372,6 +414,12 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "diplomacy_history": diplomacy_history,
         "war_revealed_by": war_revealed_by,
         "valid_actions": valid_actions,
+        "tick_started_at": game.tick_started_at,
+        "tick_elapsed_sec": tick_elapsed_sec,
+        "tick_timeout_in_sec": TICK_TIMEOUT_SEC,
+        "waiting_for": waiting_for,
+        "game_paused": game_paused,
+        "paused_reason": paused_reason,
     }
 
 
@@ -461,6 +509,8 @@ def submit_actions(
         raise ValueError("对局不存在")
     if game.status == "finished":
         raise ValueError("对局已结束")
+    if game.status == "paused":
+        raise ValueError("对局已暂停，等待玩家加入")
 
     if game.status == "waiting":
         game.status = "active"
@@ -1929,17 +1979,61 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
 
 
 def pvp_maybe_advance(session: Session, game_id: int):
-    """Check if all agents have submitted for current tick. If so, auto-tick."""
+    """Check submission + timeout. Advance tick if all occupied slots submitted
+    or if TICK_TIMEOUT_SEC elapsed since tick_started_at.  Pause game when
+    no slots are occupied."""
+    from .config import TICK_TIMEOUT_SEC
+    from .models import Slot as SlotModel
+
     game = session.get(Game, game_id)
     if game is None or game.mode != "pvp":
         return
-
     if game.status == "finished":
         return
 
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+
+    slots = session.exec(select(SlotModel).where(SlotModel.game_id == game_id)).all()
     agents = session.exec(select(Agent).where(Agent.game_id == game_id)).all()
+
+    occupied_factions = {s.faction for s in slots if s.status == "occupied"}
+
+    # ── 0 occupied slots → pause ───────────────────────────
+    if len(occupied_factions) == 0:
+        if game.status == "active":
+            game.status = "paused"
+            session.add(game)
+            session.commit()
+            print(f"[pvp_tick] Game #{game_id} paused — no occupied slots")
+        return
+
+    # ── Paused → resume ────────────────────────────────────
+    if game.status == "paused":
+        game.status = "active"
+        game.tick_started_at = now_iso
+        session.add(game)
+        session.commit()
+        print(f"[pvp_tick] Game #{game_id} resumed — slot joined")
+        managed = session.exec(
+            select(Agent).where(
+                Agent.game_id == game_id, Agent.agent_mode == "managed",
+            )
+        ).all()
+        for ma in managed:
+            try:
+                auto_decide_managed(session, game_id, ma)
+            except Exception:
+                pass
+        return
+
+    # ── Check submission: only occupied-faction agents matter ──
+    active_agents = [a for a in agents if a.faction in occupied_factions]
+    if not active_agents:
+        return
+
     all_submitted = True
-    for a in agents:
+    for a in active_agents:
         existing = session.exec(
             select(Action).where(
                 Action.game_id == game_id,
@@ -1951,41 +2045,60 @@ def pvp_maybe_advance(session: Session, game_id: int):
             all_submitted = False
             break
 
-    if not all_submitted:
+    # ── Timeout check ──────────────────────────────────────
+    timeout_elapsed = False
+    if game.tick_started_at:
+        try:
+            started = datetime.fromisoformat(game.tick_started_at)
+            elapsed = (now_dt - started).total_seconds()
+            if elapsed >= TICK_TIMEOUT_SEC:
+                timeout_elapsed = True
+        except Exception:
+            pass
+
+    if not all_submitted and not timeout_elapsed:
         return
 
-    # All submitted — advance the tick
+    # ── Advance tick ───────────────────────────────────────
+    trigger = "all-submitted" if all_submitted else "timeout"
     try:
-        result = tick(session, game_id)
-        print(f"[pvp_tick] Game #{game_id} tick {game.tick - 1} → {game.tick}")
+        tick(session, game_id)
+        print(f"[pvp_tick] Game #{game_id} advanced ({trigger})")
 
-        # After tick, trigger managed agents to decide for the new tick
+        game = session.get(Game, game_id)
+        if game and game.status != "finished":
+            game.tick_started_at = datetime.now(timezone.utc).isoformat()
+            session.add(game)
+            session.commit()
+
+        # Trigger managed agents for the new tick
         game = session.get(Game, game_id)
         if game and game.status != "finished":
             managed_agents = session.exec(
                 select(Agent).where(
-                    Agent.game_id == game_id,
-                    Agent.agent_mode == "managed",
+                    Agent.game_id == game_id, Agent.agent_mode == "managed",
                 )
             ).all()
             for ma in managed_agents:
-                auto_decide_managed(session, game_id, ma)
+                try:
+                    auto_decide_managed(session, game_id, ma)
+                except Exception:
+                    pass
 
         # Check win condition (max ticks)
         game = session.get(Game, game_id)
         if game and game.status != "finished" and game.tick >= game.max_ticks:
             _resolve_max_ticks(session, game_id)
 
-        # Auto-restart: if game just finished, create a fresh one
+        # Auto-restart if finished
         game = session.get(Game, game_id)
         if game and game.status == "finished":
-            print(f"[pvp_tick] Game #{game_id} finished. Auto-creating new game...")
+            print(f"[pvp_tick] Game #{game_id} finished — auto-restarting...")
             try:
                 from . import lobby
                 lobby.check_and_restart_game(session, game_id)
             except Exception as e:
                 print(f"[pvp_tick] Auto-restart error: {e}")
-                # Fallback to old method
                 try:
                     get_or_create_current_game(session)
                 except Exception:
@@ -2094,6 +2207,7 @@ def get_or_create_current_game(session: Session) -> Game:
 
     # Start the game right away — 3 default AIs will fight
     game.status = "active"
+    game.tick_started_at = datetime.now(timezone.utc).isoformat()
     session.add(game)
     session.commit()
 
@@ -2183,6 +2297,11 @@ def join_current_game(session: Session, name: str, faction: str, persona: str | 
 def current_game_state(session: Session) -> dict:
     """Public live state for the current game (homepage spectator view)."""
     game = get_or_create_current_game(session)
+
+    # Drive tick advancement on every poll
+    if game.mode == "pvp":
+        pvp_maybe_advance(session, game.id)
+        game = session.get(Game, game.id)
 
     cities = session.exec(select(City).where(City.game_id == game.id)).all()
     agents = session.exec(select(Agent).where(Agent.game_id == game.id)).all()

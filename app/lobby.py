@@ -69,6 +69,7 @@ def _create_active_game(session: Session) -> Game:
     game.is_current = True
     game.started_at = _now()
     game.status = "active"
+    game.tick_started_at = _now()
     session.add(game)
 
     # Create 3 open slots
@@ -186,6 +187,13 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
 def get_lobby_status(session: Session) -> dict:
     """Public lobby status: game info + slot states + spectator count."""
     game = get_active_game(session)
+
+    # Drive tick advancement — browser polls this every 3s
+    if game.mode == "pvp" and game.status in ("active", "paused"):
+        try:
+            eng.pvp_maybe_advance(session, game.id)
+        except Exception:
+            pass
 
     slots = session.exec(
         select(Slot).where(Slot.game_id == game.id)
@@ -422,6 +430,12 @@ def join_slot(
 
     session.commit()
 
+    # Resume paused game if needed
+    try:
+        eng.pvp_maybe_advance(session, game.id)
+    except Exception:
+        pass
+
     expires_at = datetime.now(timezone.utc).timestamp() + SESSION_MAX_AGE_SEC
     from datetime import datetime as dt
     expires_iso = dt.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
@@ -600,6 +614,12 @@ def reconnect_session(session: Session, token: str) -> dict:
     session.add(sess)
 
     session.commit()
+
+    # Resume paused game if needed
+    try:
+        eng.pvp_maybe_advance(session, sess.game_id)
+    except Exception:
+        pass
 
     return {
         "session_token": token,

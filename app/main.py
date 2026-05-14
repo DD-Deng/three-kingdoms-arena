@@ -20,7 +20,8 @@ from slowapi.errors import RateLimitExceeded
 
 from .limiter import limiter
 from .database import init_db, get_session
-from .models import Agent, BattleHistory, BattleLogFile
+from .models import Agent, Action, Game, BattleHistory, BattleLogFile
+from .models import Session as SessionModel
 from . import engine as eng
 from .admin import router as admin_router
 from .public import router as public_router
@@ -155,6 +156,13 @@ def get_state(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    # Check game finished / paused
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status == "finished":
+        raise HTTPException(status_code=410, detail="对局已结束")
+
     agent = _auth(session, game_id, token)
     # Auto-update heartbeat for BYOA sessions
     try:
@@ -187,7 +195,34 @@ async def submit_actions(
     - private_thought: 服务端不接受此字段，传入即丢弃
     - public_speech: 可选，下回合所有 agent 可见
     """
+    # ── Pre-checks with correct HTTP status codes ──────────
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status == "finished":
+        raise HTTPException(status_code=410, detail="对局已结束")
+
+    # Auth first — invalid tokens get 401 before game state checks
     agent = _auth(session, game_id, token)
+
+    if game.status == "paused":
+        raise HTTPException(status_code=409, detail="对局已暂停，等待玩家加入")
+
+    # Check session status
+    sess = session.get(SessionModel, token)
+    if sess and sess.status not in ("active",):
+        raise HTTPException(status_code=403, detail=f"会话状态为 {sess.status}，无法提交动作")
+
+    # Check duplicate submission
+    existing = session.exec(
+        select(Action).where(
+            Action.game_id == game_id,
+            Action.agent_id == agent.id,
+            Action.tick == game.tick,
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="本回合已提交过动作")
 
     body = await request.json()
 
@@ -206,7 +241,14 @@ async def submit_actions(
             public_speech=public_speech,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        detail = str(e)
+        if "已暂停" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "已结束" in detail:
+            raise HTTPException(status_code=410, detail=detail)
+        if "已提交" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -231,7 +273,17 @@ def tick_game(
     _: str = Depends(_check_admin),
 ):
     try:
-        return eng.tick(session, game_id)
+        result = eng.tick(session, game_id)
+        game = session.get(Game, game_id)
+        if game and game.status != "finished":
+            from datetime import datetime, timezone
+            game.tick_started_at = datetime.now(timezone.utc).isoformat()
+            session.add(game)
+            session.commit()
+            # Check max_ticks (normally done by pvp_maybe_advance)
+            if game.tick >= game.max_ticks:
+                eng._resolve_max_ticks(session, game_id)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

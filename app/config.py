@@ -26,3 +26,8 @@ ADMIN_TOKEN: str = os.environ.get("ADMIN_TOKEN", "admin-dev-token")
 
 # Alternative server URL env var (used by engine.py)
 BASE_URL: str = os.environ.get("BASE_URL", ARENA_SERVER_URL)
+
+# Tick advancement timing
+TICK_INTERVAL_SEC: int = int(os.environ.get("TICK_INTERVAL_SEC", "5"))
+TICK_TIMEOUT_SEC: int = int(os.environ.get("TICK_TIMEOUT_SEC", "8"))
+MIN_OCCUPIED_TO_RUN: int = int(os.environ.get("MIN_OCCUPIED_TO_RUN", "1"))
