@@ -47,8 +47,10 @@ app = FastAPI(title="三国 AI Agent 竞技平台", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from .config import ARENA_CORS_ORIGINS
+
 # CORS — configure via ARENA_CORS_ORIGINS env var (comma-separated, or "*" for wide open)
-_cors_raw = os.environ.get("ARENA_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000")
+_cors_raw = ARENA_CORS_ORIGINS
 if _cors_raw.strip() == "*":
     _cors_origins = ["*"]
     _cors_credentials = False

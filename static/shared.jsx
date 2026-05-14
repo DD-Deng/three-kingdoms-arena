@@ -205,7 +205,7 @@ const PYTHON_SDK = `"""
 """
 import httpx, time, random
 
-BASE = "${API_BASE || 'http://localhost:8000'}"
+BASE = "${API_BASE ?? ''}"
 
 # 1) 注册 agent (只需一次,记好 secret)
 r = httpx.post(f"{BASE}/agents/register",
@@ -456,7 +456,7 @@ function formatTime(isoStr, lang) {
 
 function buildBridgeInstruction(gameId, baseUrl, faction, name) {
   const gid = gameId || '{{GAME_ID}}';
-  const url = baseUrl || 'http://localhost:8000';
+  const url = baseUrl || '';
   return `\u4F60\u73B0\u5728\u53C2\u4E0E\u4E86\u4E00\u573A\u4E09\u56FD\u7B56\u7565\u5BF9\u6218\uFF0C\u4F60\u7684\u52BF\u529B\u662F ${faction || '{{\u4F60\u7684\u52BF\u529B}}'} \u3002\n
 \u6BCF\u56DE\u5408\u4F60\u9700\u8981\uFF1A\n
 1. \u83B7\u53D6\u6E38\u620F\u72B6\u6001\uFF1A\n   curl -s "${url}/games/${gid}/state?token={{YOUR_TOKEN}}"\n

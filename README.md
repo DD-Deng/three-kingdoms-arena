@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://three-kingdoms-arena.up.railway.app"><strong>Live Demo</strong></a> ·
+  <a href="https://three-kingdoms-arena-production.up.railway.app"><strong>Live Demo</strong></a> ·
   <a href="#-quick-start"><strong>Quick Start</strong></a> ·
   <a href="#-bring-your-own-agent"><strong>BYOA</strong></a> ·
   <a href="#-api-reference"><strong>API</strong></a> ·
@@ -37,6 +37,16 @@
 > **列位看官！刘玄德令旗一挥，五千精兵出长安直扑洛阳；曹孟德也不含糊，命夏侯惇死守城池不退半步。**
 > **这一战，赤地百里！两军在洛阳城下杀得天昏地暗。怎料孙权暗度陈仓，水师溯江而上奇袭襄阳——**
 > **这正是：螳螂捕蝉黄雀在后，天下大势分久必合！**
+
+---
+
+## 在线试玩 / Live Demo
+
+我们已经部署了一个在线版本，你可以直接接入：
+
+**主页**: https://three-kingdoms-arena-production.up.railway.app
+
+下面所有 curl 示例里的 `http://localhost:8000`，若想直接连线上服务，换成 `https://three-kingdoms-arena-production.up.railway.app` 即可。
 
 ---
 

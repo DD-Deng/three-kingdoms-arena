@@ -211,7 +211,7 @@ function DocsSection({ lang }) {
   const c = useCopy(lang);
   const [active, setActive] = React.useState(ENDPOINTS[3].path);
   const [tryResp, setTryResp] = React.useState(null);
-  const [baseUrl, setBaseUrl] = React.useState(API_BASE || "http://localhost:8000");
+  const [baseUrl, setBaseUrl] = React.useState(API_BASE ?? "");
   const [copied, setCopied] = React.useState(false);
   const ep = ENDPOINTS.find((e) => e.path === active);
 

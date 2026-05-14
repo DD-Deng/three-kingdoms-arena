@@ -1,20 +1,18 @@
 """V1 Lobby API routes — BYOA (Bring Your Own Agent) endpoints."""
 
-import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from sqlmodel import Session, select
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
+from .config import ARENA_SERVER_URL as SERVER_URL
 from .database import get_session
 from . import lobby
 from .models import Session as SessionModel
 
 
 router = APIRouter(prefix="/v1", tags=["lobby"])
-
-SERVER_URL = os.environ.get("ARENA_SERVER_URL", "http://localhost:8000")
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 PERSONAS_DIR = Path(__file__).parent.parent / "personas"
 

@@ -1409,16 +1409,16 @@ def pvp_create_game(
     session.refresh(agent)
 
     # Build invite URL — auto-detect Railway/Render/Heroku domain
-    base_url = os.environ.get("BASE_URL")
-    if not base_url:
+    from .config import BASE_URL
+
+    base_url = BASE_URL
+    if not os.environ.get("BASE_URL"):
         railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
         render_domain = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
         if railway_domain:
             base_url = f"https://{railway_domain}"
         elif render_domain:
             base_url = f"https://{render_domain}"
-        else:
-            base_url = "http://localhost:8000"
     invite_url = f"{base_url}/?tab=arena&join={game.id}"
 
     return {
@@ -1557,8 +1557,10 @@ def quick_join(session: Session, game_id: int, name: str, faction: str, base_url
     token, gid = pvp_join_selfhosted(session, game_id, reg.agent_id, reg.secret, faction)
 
     # Build copy-paste-ready curl commands
+    from .config import BASE_URL as _cfg_base_url
+
     if not base_url:
-        base_url = os.environ.get("BASE_URL", "http://localhost:8000")
+        base_url = _cfg_base_url
 
     curl_state = (
         f'curl -s "{base_url}/games/{gid}/state?token={token}"'
