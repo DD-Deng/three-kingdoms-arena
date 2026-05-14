@@ -236,6 +236,24 @@ def get_lobby_status(session: Session) -> dict:
                 info["disconnected_sec"] = int(ago)
                 remaining = RECONNECT_GRACE_SEC - int(ago)
                 info["reconnect_remaining_sec"] = max(0, remaining)
+                # Auto-release if grace period expired
+                if ago > RECONNECT_GRACE_SEC:
+                    old_session = session.exec(
+                        select(SessionModel).where(
+                            SessionModel.session_token == s.session_token
+                        )
+                    ).first()
+                    if old_session:
+                        old_session.status = "kicked"
+                        session.add(old_session)
+                    s.status = "open"
+                    s.session_token = None
+                    s.occupied_by_ip = None
+                    s.occupied_by_persona_hash = None
+                    session.add(s)
+                    session.commit()
+                    status = "open"
+                    info = {"status": "open", "occupied_since": s.joined_at}
             info["ip"] = (s.occupied_by_ip or "")[:8] + "***"
 
         slots_status[faction] = info
