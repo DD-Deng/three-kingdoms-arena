@@ -9,14 +9,9 @@ from pathlib import Path
 from sqlmodel import Session, select
 from .models import Game, Agent, City, Action, Player, RegisteredAgent
 
-# ── Dayan Engine integration ──────────────────────────────────
-_DAYAN_PATH = Path(__file__).resolve().parent.parent / "DaYan Engine"
-if _DAYAN_PATH.exists() and str(_DAYAN_PATH) not in sys.path:
-    sys.path.insert(0, str(_DAYAN_PATH))
-
-from dayan_engine.core.types import BattleConfig  # noqa: E402
-from dayan_engine.core.battle import run_battle  # noqa: E402
-from dayan_engine.narrator.template_narrator import generate as generate_narrative  # noqa: E402
+from dayan_engine.core.types import BattleConfig
+from dayan_engine.core.battle import run_battle
+from dayan_engine.narrator.template_narrator import generate as generate_narrative
 
 # Faction → Three Kingdoms general traits (from Dayan Engine presets)
 FACTION_TRAITS: dict[str, dict[str, float]] = {
