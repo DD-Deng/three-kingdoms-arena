@@ -85,6 +85,7 @@ COORDINATED_ATTACK_WINDOW = 3   # 联盟有效窗口 (tick)           —— §4
 # ── 外交与信用系统（详见 docs/diplomacy-rules.md） ──────────
 DIPLOMACY_TYPES = [
     "alliance_propose", "alliance_accept", "alliance_break",
+    "alliance_renew",
     "declare_war", "trade_offer", "message",
 ]
 TRUST_INITIAL = 100
@@ -93,6 +94,7 @@ TRUST_ALLY_ATTACK_PENALTY = -50   # 盟期内攻击盟友扣 50（且自动 brea
 TRUST_RECOVERY_PER_TICK = 5       # 7 tick 不背叛，每 tick +5（上限 100）
 TRUST_REJECT_THRESHOLD = 50       # trust < 50 → 其他人自动拒绝你的联盟提议
 BETRAYAL_COOLDOWN = 5             # 破盟后 5 tick 内联盟提议自动被拒
+ALLIANCE_AUTO_EXPIRE_TICKS = 15  # 联盟 15 tick 后自动过期
 
 # 日志目录
 LOG_DIR = Path("logs")
@@ -472,10 +474,16 @@ def _compute_diplomacy_relations(
             relation["status"] = "allied"
             relation["since_tick"] = my_res.get("alliance_since")
             relation["trust_score"] = my_res.get("trust_score", 100)
+            relation["expires_at_tick"] = my_res.get("alliance_expires_at")
+            if relation["expires_at_tick"]:
+                relation["ticks_until_expire"] = max(0, relation["expires_at_tick"] - tick)
         elif other_res.get("alliance_with") == my_faction:
             relation["status"] = "allied"
             relation["since_tick"] = other_res.get("alliance_since")
             relation["trust_score"] = my_res.get("trust_score", 100)
+            relation["expires_at_tick"] = other_res.get("alliance_expires_at")
+            if relation["expires_at_tick"]:
+                relation["ticks_until_expire"] = max(0, relation["expires_at_tick"] - tick)
 
         # Check war (overrides alliance — should not happen after this fix)
         if my_res.get("war_declared_on") == other:
@@ -740,6 +748,16 @@ def submit_actions(
                 if my_alliance != target:
                     raise ValueError(f"你未与 [{target}] 联盟，无法 break")
 
+            elif diplomacy_type == "alliance_renew":
+                if my_alliance != target:
+                    raise ValueError(f"你未与 [{target}] 联盟，无法续约")
+                expires_at = faction_res.get("alliance_expires_at", 0)
+                remaining = expires_at - game.tick
+                if remaining > 5:
+                    raise ValueError(
+                        f"联盟距到期还有 {remaining} tick，尚早（≤5 tick 才可续约）"
+                    )
+
             elif diplomacy_type == "declare_war":
                 pass  # 宣战无前置条件
 
@@ -882,6 +900,34 @@ def tick(session: Session, game_id: int):
         if "trust_score" not in resources[f]:
             resources[f]["trust_score"] = TRUST_INITIAL
 
+    # ── 联盟自动过期检查（在外交处理之前） ─────────────────
+    for f in FACTION_POOL:
+        fres = resources.get(f, {})
+        ally = fres.get("alliance_with")
+        if ally:
+            expires_at = fres.get("alliance_expires_at", game.tick + ALLIANCE_AUTO_EXPIRE_TICKS)
+            if game.tick >= expires_at:
+                # 自动过期，无信用惩罚
+                fres.pop("alliance_with", None)
+                fres.pop("alliance_since", None)
+                fres.pop("alliance_expires_at", None)
+                ally_res = resources.get(ally, {})
+                ally_res.pop("alliance_with", None)
+                ally_res.pop("alliance_since", None)
+                ally_res.pop("alliance_expires_at", None)
+                # 清理全局联盟列表
+                alliances = resources.get("_alliances", [])
+                resources["_alliances"] = [
+                    al for al in alliances
+                    if sorted(al["factions"]) != sorted([f, ally])
+                ]
+                diplomacy_events.append({
+                    "tick": game.tick,
+                    "type": "alliance_expired",
+                    "factions": [f, ally],
+                    "reason": "auto_expired",
+                })
+
     # 收集所有外交动作，按 faction 分组
     faction_diplomacy: dict[str, list] = defaultdict(list)
     for a in actions:
@@ -930,10 +976,13 @@ def tick(session: Session, game_id: int):
             # ── alliance_accept: 接受联盟 ──────────────────
             elif d_type == "alliance_accept":
                 # 建立联盟关系
+                expires_tick = game.tick + ALLIANCE_AUTO_EXPIRE_TICKS
                 fres["alliance_with"] = target
                 fres["alliance_since"] = game.tick
+                fres["alliance_expires_at"] = expires_tick
                 tres["alliance_with"] = faction
                 tres["alliance_since"] = game.tick
+                tres["alliance_expires_at"] = expires_tick
                 # 清除 pending
                 fres.pop("pending_alliance_to", None)
                 tres.pop("pending_alliance_from", None)
@@ -942,12 +991,14 @@ def tick(session: Session, game_id: int):
                     "type": "alliance_formed",
                     "factions": [faction, target],
                     "since_tick": game.tick,
+                    "expires_at": expires_tick,
                 })
                 # 存储全局联盟列表
                 alliances = resources.get("_alliances", [])
                 alliances.append({
                     "factions": sorted([faction, target]),
                     "since_tick": game.tick,
+                    "expires_at": expires_tick,
                 })
                 resources["_alliances"] = alliances
 
@@ -957,11 +1008,13 @@ def tick(session: Session, game_id: int):
                 if ally == target:
                     fres.pop("alliance_with", None)
                     fres.pop("alliance_since", None)
+                    fres.pop("alliance_expires_at", None)
                     fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
                     fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
                     # 对方也解除
                     tres.pop("alliance_with", None)
                     tres.pop("alliance_since", None)
+                    tres.pop("alliance_expires_at", None)
                     # 移除全局联盟记录
                     alliances = resources.get("_alliances", [])
                     resources["_alliances"] = [
@@ -976,16 +1029,37 @@ def tick(session: Session, game_id: int):
                         "penalty": TRUST_BETRAYAL_PENALTY,
                     })
 
+            # ── alliance_renew: 续约联盟 ──────────────────
+            elif d_type == "alliance_renew":
+                ally = fres.get("alliance_with")
+                if ally == target:
+                    expires_tick = game.tick + ALLIANCE_AUTO_EXPIRE_TICKS
+                    fres["alliance_expires_at"] = expires_tick
+                    tres["alliance_expires_at"] = expires_tick
+                    # 更新全局联盟记录
+                    alliances = resources.get("_alliances", [])
+                    for al in alliances:
+                        if sorted(al["factions"]) == sorted([faction, target]):
+                            al["expires_at"] = expires_tick
+                    diplomacy_events.append({
+                        "tick": game.tick,
+                        "type": "alliance_renewed",
+                        "factions": [faction, target],
+                        "expires_at": expires_tick,
+                    })
+
             # ── declare_war: 宣战 ──────────────────────────
             elif d_type == "declare_war":
                 # 若双方当前是盟友，先自动破盟
                 if fres.get("alliance_with") == target:
                     fres.pop("alliance_with", None)
                     fres.pop("alliance_since", None)
+                    fres.pop("alliance_expires_at", None)
                     fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
                     fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
                     tres.pop("alliance_with", None)
                     tres.pop("alliance_since", None)
+                    tres.pop("alliance_expires_at", None)
                     alliances = resources.get("_alliances", [])
                     resources["_alliances"] = [
                         al for al in alliances

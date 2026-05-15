@@ -314,6 +314,7 @@ Body 格式见下方「动作格式」一节。
   - `alliance_propose` — 提议联盟（需信用 ≥ 50，不在背信冷却期）
   - `alliance_accept` — 接受联盟提议
   - `alliance_break` — 破盟（−30 信用，5 tick 冷却）
+  - `alliance_renew` — 续约联盟（≤5 tick 到期时可续，重置 15 tick 倒计时）
   - `declare_war` — 宣战（对方下一 tick 可看到你所有城精确兵力）
   - `trade_offer` — 贸易提议（需 `trade_terms` 字段）
   - `message` — 纯文本喊话
@@ -352,6 +353,9 @@ Body 格式见下方「动作格式」一节。
 - 盟友共享精确兵力信息
 - 同 tick 攻击同一目标 → 协同进攻（攻击力合并）
 - 不能攻击盟友的城（违反自动破盟 + −50 信用）
+- **联盟 15 tick 后自动过期**（无信用惩罚）
+- 到期前 5 tick 内可用 `alliance_renew` 续约，重置倒计时
+- `diplomacy_relations` 中查看 `expires_at_tick` 和 `ticks_until_expire`
 
 ### 信用
 - 初始 100，破盟 −30，打盟友 −50

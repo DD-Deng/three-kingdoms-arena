@@ -135,6 +135,14 @@ defense_power = city.troops × defense_multiplier
 - 各攻各的，按 §2.4 规则结算
 - 非联盟方即使攻同一目标也不合并攻击力
 
+### §4.4 联盟自动过期
+
+- 联盟成立后 **15 tick 自动过期**（ALLIANCE_AUTO_EXPIRE_TICKS = 15）
+- 过期不扣信用，双方自动回到中立状态
+- 到期前 **5 tick 内**可用 `alliance_renew` 续约，重置 15 tick 倒计时
+- 提前破盟（alliance_break）仍扣 −30 信用 + 5 tick 背信冷却
+- 联盟数据在 `diplomacy_relations` 中包含 `expires_at_tick` 和 `ticks_until_expire`
+
 ---
 
 ## §5 经济系统
