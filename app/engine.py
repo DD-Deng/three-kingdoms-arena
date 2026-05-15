@@ -2129,9 +2129,18 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
     """Rule-based auto-decide for managed AI agents.
 
     Simple, predictable behaviour — deliberately not LLM-smart.
+    Personality system: aggressive/balanced/conservative modulates behaviour.
     """
-    from .config import MANAGED_AI_AGGRESSION
+    from .config import MANAGED_AI_AGGRESSION, MANAGED_AI_RECRUIT_RATIO
     import random
+
+    # Personality modifiers
+    cfg = MANAGED_DEFAULTS.get(agent.faction, {})
+    personality = cfg.get("personality", "balanced")
+    mods = PERSONALITY_MODIFIERS.get(personality, PERSONALITY_MODIFIERS["balanced"])
+    aggression = MANAGED_AI_AGGRESSION * mods["aggression"]
+    recruit_ratio = MANAGED_AI_RECRUIT_RATIO * mods["recruit"]
+    attack_multiplier = mods["attack_ratio"]
 
     try:
         state = get_state(session, game_id, agent)
@@ -2151,7 +2160,7 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
                 if any(a["type"] == "defend" and a["target"] == city["name"] for a in valid_actions):
                     actions.append({"type": "defend", "target": city["name"]})
 
-        # 2. Recruit: use half grain to recruit troops to weakest city
+        # 2. Recruit: use recruit_ratio of grain to recruit troops to weakest city
         if your_cities and grain > 0:
             weakest = min(your_cities, key=lambda c: c["troops"])
             recruit_valid = next(
@@ -2162,7 +2171,7 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
                 max_amount = recruit_valid.get("max_amount", 0)
                 if max_amount > 0:
                     recruit_cost = 3 if your_resources.get("recruit_penalty") else 2
-                    affordable = grain // (2 * recruit_cost)
+                    affordable = int(grain * recruit_ratio) // recruit_cost
                     amount = min(affordable, max_amount)
                     if amount > 0:
                         actions.append({"type": "recruit", "target": weakest["name"], "amount": amount})
@@ -2177,8 +2186,8 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
                     "message": "善",
                 })
 
-        # 4. Attack — only when we have decisive advantage (2:1) and aggression roll passes
-        if your_cities and random.random() < MANAGED_AI_AGGRESSION:
+        # 4. Attack — only when decisive advantage and aggression roll passes
+        if your_cities and random.random() < aggression:
             for my_city in your_cities:
                 if my_city["troops"] <= 200:
                     continue
@@ -2193,7 +2202,8 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
                     if your_ally and owner == your_ally:
                         continue
                     enemy_troops = neighbor.get("troops", 0)
-                    if my_city["troops"] > enemy_troops * 2:
+                    # Personality-driven attack threshold
+                    if my_city["troops"] > enemy_troops * attack_multiplier:
                         troops_to_send = int(my_city["troops"] * 0.6)
                         if troops_to_send > 0:
                             actions.append({
@@ -2412,9 +2422,16 @@ def pvp_maybe_advance(session: Session, game_id: int):
 
 
 MANAGED_DEFAULTS = {
-    "蜀": {"name": "刘玄德", "persona": "你是一位仁德之主，以民为本，坚守蜀地，伺机北伐。"},
-    "魏": {"name": "曹孟德", "persona": "你是一位雄才大略的枭雄，挟天子以令诸侯，志在一统天下。"},
-    "吴": {"name": "孙仲谋", "persona": "你是一位善于权谋的江东之主，倚长江天险，伺机图取中原。"},
+    "蜀": {"name": "刘玄德", "persona": "你是一位仁德之主，以民为本，坚守蜀地，伺机北伐。", "personality": "conservative"},
+    "魏": {"name": "曹孟德", "persona": "你是一位雄才大略的枭雄，挟天子以令诸侯，志在一统天下。", "personality": "aggressive"},
+    "吴": {"name": "孙仲谋", "persona": "你是一位善于权谋的江东之主，倚长江天险，伺机图取中原。", "personality": "balanced"},
+}
+
+# Personality → aggression / recruit / attack-threshold multipliers
+PERSONALITY_MODIFIERS = {
+    "aggressive":   {"aggression": 1.6,  "recruit": 1.1,  "attack_ratio": 1.5},
+    "balanced":     {"aggression": 1.0,  "recruit": 1.0,  "attack_ratio": 2.0},
+    "conservative": {"aggression": 0.5,  "recruit": 0.8,  "attack_ratio": 3.0},
 }
 
 

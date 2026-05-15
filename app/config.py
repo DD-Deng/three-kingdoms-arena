@@ -56,3 +56,6 @@ ENABLE_MANAGED_AI: bool = os.environ.get("ENABLE_MANAGED_AI", "true").lower() ==
 
 # Managed AI aggression: 0.0 = purely defensive, 1.0 = very aggressive.
 MANAGED_AI_AGGRESSION: float = float(os.environ.get("MANAGED_AI_AGGRESSION", "0.3"))
+
+# Managed AI recruit ratio: fraction of grain to spend on recruitment per tick.
+MANAGED_AI_RECRUIT_RATIO: float = float(os.environ.get("MANAGED_AI_RECRUIT_RATIO", "0.3"))
