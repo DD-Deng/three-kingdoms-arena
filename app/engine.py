@@ -253,16 +253,22 @@ def get_state(session: Session, game_id: int, agent: Agent):
     your_faction = agent.faction
 
     # ── 你的城池（精确信息） ──────────────────────────────
+    last_occupied = {}
+    if game.resources:
+        last_occupied = json.loads(game.resources).get("_last_occupied", {})
     your_cities = []
     own_names = set()
     for c in cities:
         if c.owner == your_faction:
             neighbors = CITY_ADJACENCY.get(c.name, [])
-            your_cities.append({
+            city_data = {
                 "name": c.name,
                 "troops": c.troops,
                 "neighbors": neighbors,
-            })
+            }
+            if c.name in last_occupied:
+                city_data["last_occupied_at"] = last_occupied[c.name]
+            your_cities.append(city_data)
             own_names.add(c.name)
 
     # ── 已知城池（按距离分层） ────────────────────────────
@@ -299,12 +305,15 @@ def get_state(session: Session, game_id: int, agent: Agent):
             continue
         owner_display = c.owner if c.owner else "中立"
         if c.name in visible_cities:
-            known_cities.append({
+            cd = {
                 "name": c.name,
                 "owner": owner_display,
                 "troops": c.troops,
                 "info_freshness": "current",
-            })
+            }
+            if c.name in last_occupied:
+                cd["last_occupied_at"] = last_occupied[c.name]
+            known_cities.append(cd)
         else:
             known_cities.append({
                 "name": c.name,
@@ -1147,6 +1156,31 @@ def tick(session: Session, game_id: int):
     # ── 保存防御工事数据 ──────────────────────────────────
     resources["_defense_works"] = defense_works
 
+    # ── 占领奖励：每占一城 +200 粮草 ──────────────────────
+    from .config import OCCUPATION_REWARD_GRAIN
+    now_iso = datetime.now(timezone.utc).isoformat()
+    last_occupied = resources.get("_last_occupied", {})
+    for ev in combat_events:
+        if ev.get("result") == "captured":
+            capturer = ev.get("captured_by")
+            city_name = ev.get("city")
+            if capturer and capturer in FACTION_POOL:
+                if capturer not in resources:
+                    resources[capturer] = {"grain": INITIAL_GRAIN.get(capturer, 500), "debt": 0}
+                resources[capturer]["grain"] += OCCUPATION_REWARD_GRAIN
+                last_occupied[city_name] = now_iso
+                ev["occupation_reward"] = OCCUPATION_REWARD_GRAIN
+    resources["_last_occupied"] = last_occupied
+
+    # ── 灭国记录：失去最后一城的势力 ──────────────────────
+    post_combat_cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    for faction in FACTION_POOL:
+        owned = sum(1 for c in post_combat_cities if c.owner == faction)
+        if owned == 0 and resources.get(faction, {}).get("eliminated_at") is None:
+            if faction not in resources:
+                resources[faction] = {}
+            resources[faction]["eliminated_at"] = now_iso
+
     # ── 3. 招募（战斗后） ─────────────────────────────────
     recruit_actions = [a for a in actions if a.type == "recruit"]
     for a in recruit_actions:
@@ -1192,12 +1226,22 @@ def tick(session: Session, game_id: int):
 
     # ── 5. 粮草收入 + 债务结算 ──────────────────────────
     # resources 已在 §2 中加载，包含 _defense_works
+    from .config import ECONOMIC_CATCHUP_ENABLED, ECONOMIC_CATCHUP_PER_CITY_BEHIND
     updated_cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    owned_by_faction: dict[str, int] = {}
     for faction in FACTION_POOL:
         if faction not in resources:
             resources[faction] = {"grain": INITIAL_GRAIN.get(faction, 500), "debt": 0}
         owned_count = sum(1 for c in updated_cities if c.owner == faction)
-        resources[faction]["grain"] += owned_count * GRAIN_PER_CITY
+        owned_by_faction[faction] = owned_count
+        base_income = owned_count * GRAIN_PER_CITY
+        # 落后方加成（开关控制）
+        if ECONOMIC_CATCHUP_ENABLED:
+            avg = sum(owned_by_faction.values()) / len(FACTION_POOL)
+            if owned_count < avg:
+                multiplier = 1 + ECONOMIC_CATCHUP_PER_CITY_BEHIND * (avg - owned_count)
+                base_income = round(base_income * multiplier)
+        resources[faction]["grain"] += base_income
         # 清除负债标记：若粮草回正，清除惩罚和债务记录
         if resources[faction]["grain"] >= 0 and resources[faction].get("recruit_penalty"):
             del resources[faction]["recruit_penalty"]
