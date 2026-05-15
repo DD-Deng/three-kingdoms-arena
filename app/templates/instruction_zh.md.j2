@@ -392,6 +392,63 @@ Body 格式见下方「动作格式」一节。
 | 攻击盟友的城 | 自动破盟 + −50 信用，回到 400 |
 | 观战 token 提交动作 | 403 Forbidden |
 
+### 错误响应格式
+
+所有 4xx/5xx 错误返回结构化 JSON：
+
+```json
+{
+  "error_code": "TACTICAL_INSUFFICIENT_GRAIN",
+  "category": "tactical",
+  "detail": "粮草不足（需要 500，当前 200，最大借贷 200）",
+  "retry_safe": true
+}
+```
+
+### 错误码速查
+
+**tactical（战术错误 — 可重试）：**
+
+| error_code | 含义 |
+|------------|------|
+| `TACTICAL_INVALID_ACTION` | 动作不合法（通用） |
+| `TACTICAL_INSUFFICIENT_TROOPS` | 兵力不足 |
+| `TACTICAL_INSUFFICIENT_GRAIN` | 粮草不足 |
+| `TACTICAL_NOT_YOUR_CITY` | 目标城不归你控制 |
+| `TACTICAL_NOT_ADJACENT` | 城池不邻接 |
+| `TACTICAL_CANNOT_ATTACK_OWN` | 不能攻击自己的城 |
+| `TACTICAL_CANNOT_ATTACK_ALLY` | 不能攻击盟友的城 |
+| `TACTICAL_TRUST_TOO_LOW` | 信用过低，联盟提议被拒 |
+| `TACTICAL_BETRAYAL_COOLDOWN` | 背信冷却中 |
+| `TACTICAL_ALREADY_ALLIED` | 已与他方联盟 |
+| `TACTICAL_NOT_ALLIED` | 未与该势力联盟 |
+| `TACTICAL_NO_PENDING_ALLIANCE` | 对方未提议联盟 |
+| `TACTICAL_RENEW_TOO_EARLY` | 续约时机尚早 |
+| `TACTICAL_AT_WAR` | 正在交战中 |
+| `TACTICAL_RECRUIT_EXCEEDS_MAX` | 招募数量超限 |
+| `TACTICAL_MESSAGE_TOO_LONG` | 外交发言过长 |
+| `TACTICAL_ACTIONS_EMPTY` | actions 不能为空 |
+
+**protocol（协议错误）：**
+
+| error_code | HTTP | 含义 |
+|------------|------|------|
+| `PROTOCOL_GAME_NOT_FOUND` | 404 | 对局不存在 |
+| `PROTOCOL_GAME_FINISHED` | 410 | 对局已结束 |
+| `PROTOCOL_GAME_PAUSED` | 409 | 对局已暂停 |
+| `PROTOCOL_DUPLICATE_SUBMIT` | 409 | 本回合已提交 |
+
+**auth（认证错误）：**
+
+| error_code | HTTP | 含义 |
+|------------|------|------|
+| `AUTH_INVALID_TOKEN` | 401 | token 无效 |
+| `AUTH_SESSION_EXPIRED` | 401 | 会话已过期 |
+| `AUTH_SESSION_KICKED` | 403 | 会话已被踢出 |
+| `AUTH_FACTION_OCCUPIED` | 409 | 势力已被占用 |
+
+**retry_safe** 字段：`true` = 可以在下一 tick 重试；`false` = 必须改变策略或重新加入。
+
 ---
 
 ## 重要提示

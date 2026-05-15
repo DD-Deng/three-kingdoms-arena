@@ -48,6 +48,126 @@ app = FastAPI(title="三国 AI Agent 竞技平台", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from app.exceptions import ArenaException, ErrorCategory, tactical, protocol, auth_error
+
+
+@app.exception_handler(ArenaException)
+async def arena_exception_handler(request: Request, exc: ArenaException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.as_response(),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Wrap legacy HTTPException into structured error format."""
+    detail = str(exc.detail)
+    # Map common patterns to error codes
+    if exc.status_code == 404:
+        code = "PROTOCOL_GAME_NOT_FOUND"
+    elif exc.status_code == 410:
+        code = "PROTOCOL_GAME_FINISHED"
+    elif exc.status_code == 409:
+        code = "PROTOCOL_DUPLICATE_SUBMIT"
+    elif exc.status_code == 403:
+        code = "AUTH_SESSION_KICKED"
+    elif exc.status_code == 401:
+        code = "AUTH_INVALID_TOKEN"
+    else:
+        code = "TACTICAL_INVALID_ACTION"
+    arena_exc = ArenaException(code, detail, status_code=exc.status_code)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=arena_exc.as_response(),
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    """Map existing ValueError messages to structured error codes."""
+    detail = str(exc)
+    # ── Tactical ──────────────────────────────────────────
+    if "行动不能在" in detail:
+        code, status = "TACTICAL_INVALID_ACTION", 400
+    elif "不归你控制" in detail:
+        code, status = "TACTICAL_NOT_YOUR_CITY", 400
+    elif "不邻接" in detail:
+        code, status = "TACTICAL_NOT_ADJACENT", 400
+    elif "不能攻击自己" in detail:
+        code, status = "TACTICAL_CANNOT_ATTACK_OWN", 400
+    elif "不能攻击盟友" in detail:
+        code, status = "TACTICAL_CANNOT_ATTACK_ALLY", 400
+    elif "粮草不足" in detail:
+        code, status = "TACTICAL_INSUFFICIENT_GRAIN", 400
+    elif "兵力不足" in detail and "出兵城" in detail:
+        code, status = "TACTICAL_INSUFFICIENT_TROOPS", 400
+    elif "不能对自己外交" in detail:
+        code, status = "TACTICAL_DIPLOMACY_TARGET_SELF", 400
+    elif "未知外交类型" in detail:
+        code, status = "TACTICAL_INVALID_DIPLOMACY_TYPE", 400
+    elif "信用过低" in detail:
+        code, status = "TACTICAL_TRUST_TOO_LOW", 400
+    elif "背信冷却" in detail:
+        code, status = "TACTICAL_BETRAYAL_COOLDOWN", 400
+    elif "已与" in detail and "联盟" in detail and "请先 break" in detail:
+        code, status = "TACTICAL_ALREADY_ALLIED", 400
+    elif "未与" in detail and "联盟" in detail and ("break" in detail or "续约" in detail):
+        code, status = "TACTICAL_NOT_ALLIED", 400
+    elif "未向你提议联盟" in detail:
+        code, status = "TACTICAL_NO_PENDING_ALLIANCE", 400
+    elif "尚早" in detail and "续约" in detail:
+        code, status = "TACTICAL_RENEW_TOO_EARLY", 400
+    elif "正在与" in detail and "交战" in detail:
+        code, status = "TACTICAL_AT_WAR", 400
+    elif "已对你宣战" in detail:
+        code, status = "TACTICAL_AT_WAR", 400
+    elif "actions 不能为空" in detail:
+        code, status = "TACTICAL_ACTIONS_EMPTY", 400
+    elif "最多招募" in detail:
+        code, status = "TACTICAL_RECRUIT_EXCEEDS_MAX", 400
+    elif "不能超过" in detail and "字" in detail:
+        code, status = "TACTICAL_MESSAGE_TOO_LONG", 400
+    elif "招募数量" in detail and "> 0" in detail:
+        code, status = "TACTICAL_INVALID_ACTION", 400
+    # ── Protocol ───────────────────────────────────────────
+    elif "对局不存在" in detail:
+        code, status = "PROTOCOL_GAME_NOT_FOUND", 404
+    elif "对局已结束" in detail:
+        code, status = "PROTOCOL_GAME_FINISHED", 410
+    elif "对局已暂停" in detail:
+        code, status = "PROTOCOL_GAME_PAUSED", 409
+    elif "已提交" in detail:
+        code, status = "PROTOCOL_DUPLICATE_SUBMIT", 409
+    elif "对局已开始" in detail:
+        code, status = "PROTOCOL_ALREADY_STARTED", 409
+    # ── Auth ───────────────────────────────────────────────
+    elif "无效势力" in detail:
+        code, status = "TACTICAL_INVALID_ACTION", 400
+    elif "势力" in detail and "已被占用" in detail:
+        code, status = "AUTH_FACTION_OCCUPIED", 409
+    elif "无效" in detail and "session_token" in detail:
+        code, status = "AUTH_INVALID_TOKEN", 401
+    elif "已过期" in detail:
+        code, status = "AUTH_SESSION_EXPIRED", 401
+    elif "已被踢出" in detail:
+        code, status = "AUTH_SESSION_KICKED", 403
+    elif "agent 未注册" in detail:
+        code, status = "AUTH_AGENT_NOT_REGISTERED", 401
+    elif "secret 不正确" in detail:
+        code, status = "AUTH_SECRET_INCORRECT", 401
+    # ── Rate limit ─────────────────────────────────────────
+    elif "同一 IP" in detail:
+        code, status = "RATE_LIMIT_ONE_PER_IP", 429
+    else:
+        code, status = "TACTICAL_INVALID_ACTION", 400
+
+    exc_resp = ArenaException(code, detail, status_code=status)
+    return JSONResponse(
+        status_code=exc_resp.status_code,
+        content=exc_resp.as_response(),
+    )
+
 from .config import ARENA_CORS_ORIGINS
 
 # CORS — configure via ARENA_CORS_ORIGINS env var (comma-separated, or "*" for wide open)
@@ -105,7 +225,7 @@ def _auth(session: Session, game_id: int, token: str) -> Agent:
         )
     ).first()
     if agent is None:
-        raise HTTPException(status_code=401, detail="无效 token")
+        raise auth_error("AUTH_INVALID_TOKEN", "无效 token")
     return agent
 
 
@@ -161,9 +281,9 @@ def get_state(
     # Check game finished / paused
     game = session.get(Game, game_id)
     if game is None:
-        raise HTTPException(status_code=404, detail="对局不存在")
+        raise protocol("PROTOCOL_GAME_NOT_FOUND", "对局不存在")
     if game.status == "finished":
-        raise HTTPException(status_code=410, detail="对局已结束")
+        raise protocol("PROTOCOL_GAME_FINISHED", "对局已结束")
 
     agent = _auth(session, game_id, token)
     # Auto-update heartbeat for BYOA sessions
@@ -197,23 +317,23 @@ async def submit_actions(
     - private_thought: 服务端不接受此字段，传入即丢弃
     - public_speech: 可选，下回合所有 agent 可见
     """
-    # ── Pre-checks with correct HTTP status codes ──────────
+    # ── Pre-checks with structured error codes ─────────────
     game = session.get(Game, game_id)
     if game is None:
-        raise HTTPException(status_code=404, detail="对局不存在")
+        raise protocol("PROTOCOL_GAME_NOT_FOUND", "对局不存在")
     if game.status == "finished":
-        raise HTTPException(status_code=410, detail="对局已结束")
+        raise protocol("PROTOCOL_GAME_FINISHED", "对局已结束")
 
     # Auth first — invalid tokens get 401 before game state checks
     agent = _auth(session, game_id, token)
 
     if game.status == "paused":
-        raise HTTPException(status_code=409, detail="对局已暂停，等待玩家加入")
+        raise protocol("PROTOCOL_GAME_PAUSED", "对局已暂停，等待玩家加入")
 
     # Check session status
     sess = session.get(SessionModel, token)
     if sess and sess.status not in ("active",):
-        raise HTTPException(status_code=403, detail=f"会话状态为 {sess.status}，无法提交动作")
+        raise auth_error("AUTH_SESSION_DISCONNECTED", f"会话状态为 {sess.status}，无法提交动作")
 
     # Check duplicate submission
     existing = session.exec(
@@ -224,7 +344,7 @@ async def submit_actions(
         )
     ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="本回合已提交过动作")
+        raise protocol("PROTOCOL_DUPLICATE_SUBMIT", "本回合已提交过动作")
 
     body = await request.json()
 
@@ -233,7 +353,7 @@ async def submit_actions(
 
     actions = body.get("actions", [])
     if not actions:
-        raise HTTPException(status_code=400, detail="actions 不能为空")
+        raise tactical("TACTICAL_ACTIONS_EMPTY", "actions 不能为空")
 
     public_speech = body.get("public_speech", "") or ""
 
@@ -245,12 +365,12 @@ async def submit_actions(
     except ValueError as e:
         detail = str(e)
         if "已暂停" in detail:
-            raise HTTPException(status_code=409, detail=detail)
+            raise protocol("PROTOCOL_GAME_PAUSED", detail)
         if "已结束" in detail:
-            raise HTTPException(status_code=410, detail=detail)
+            raise protocol("PROTOCOL_GAME_FINISHED", detail)
         if "已提交" in detail:
-            raise HTTPException(status_code=409, detail=detail)
-        raise HTTPException(status_code=400, detail=detail)
+            raise protocol("PROTOCOL_DUPLICATE_SUBMIT", detail)
+        raise  # re-raise ValueError → handled by value_error_handler
 
 
 # ═══════════════════════════════════════════════════════════════
