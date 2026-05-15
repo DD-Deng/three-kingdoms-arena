@@ -420,15 +420,17 @@ def join_slot(
         slot.session_token = None
 
     # ── Check IP limit: one active session per IP ──────────
-    active_sessions = session.exec(
-        select(SessionModel).where(
-            SessionModel.ip == ip,
-            SessionModel.faction != "spectator",
-            SessionModel.status.in_(["active", "disconnected"]),
-        )
-    ).all()
-    if len(active_sessions) >= MAX_ACTIVE_SESSIONS_PER_IP:
-        raise ValueError("同一 IP 只能持有 1 个活跃席位")
+    from .config import ENFORCE_ONE_FACTION_PER_IP
+    if ENFORCE_ONE_FACTION_PER_IP:
+        active_sessions = session.exec(
+            select(SessionModel).where(
+                SessionModel.ip == ip,
+                SessionModel.faction != "spectator",
+                SessionModel.status.in_(["active", "disconnected"]),
+            )
+        ).all()
+        if len(active_sessions) >= MAX_ACTIVE_SESSIONS_PER_IP:
+            raise ValueError("同一 IP 只能持有 1 个活跃席位")
 
     # ── Occupy the slot ────────────────────────────────────
     token = _new_token()

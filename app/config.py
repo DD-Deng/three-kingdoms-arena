@@ -31,3 +31,9 @@ BASE_URL: str = os.environ.get("BASE_URL", ARENA_SERVER_URL)
 TICK_INTERVAL_SEC: int = int(os.environ.get("TICK_INTERVAL_SEC", "5"))
 TICK_TIMEOUT_SEC: int = int(os.environ.get("TICK_TIMEOUT_SEC", "8"))
 MIN_OCCUPIED_TO_RUN: int = int(os.environ.get("MIN_OCCUPIED_TO_RUN", "1"))
+
+# Restrict one faction per IP. Default False for dev (same machine multi-agent).
+# Set to True in competitive/production mode to prevent multi-accounting.
+ENFORCE_ONE_FACTION_PER_IP: bool = os.environ.get(
+    "ENFORCE_ONE_FACTION_PER_IP", "false"
+).lower() == "true"

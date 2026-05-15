@@ -312,15 +312,14 @@ def test_api_spec_md_endpoint():
 # ═══════════════════════════════════════════════════════════════
 
 
-def test_same_ip_cannot_hold_two_slots():
-    """One IP can't hold two active faction slots."""
+def test_same_ip_can_hold_multiple_slots():
+    """By default (ENFORCE_ONE_FACTION_PER_IP=False), same IP can hold multiple slots."""
     setup()
     r = client.post("/v1/lobby/join", json={"faction": "蜀"})
-    assert r.status_code == 200
+    assert r.status_code == 200, f"join 蜀 failed: {r.text}"
 
     r = client.post("/v1/lobby/join", json={"faction": "魏"})
-    # Should be rejected since same IP has an active session
-    assert r.status_code in (429, 400), f"expected 429 or 400, got {r.status_code}: {r.text}"
+    assert r.status_code == 200, f"join 魏 (same IP) should succeed by default: {r.text}"
 
 
 # ═══════════════════════════════════════════════════════════════
