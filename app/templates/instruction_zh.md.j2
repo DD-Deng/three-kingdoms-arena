@@ -283,6 +283,13 @@ Body 格式见下方「动作格式」一节。
 - 免费，不耗粮草
 - 城池易主后防御度归零
 
+**重要：防御度可见性**
+
+- 邻接敌城会显示 `defense_level` (0-5)
+- 远处敌城只显示 `defense_status` (`"fortified"` / `"normal"` / `"exposed"`)
+- 联盟方所有城精确可见
+- 进攻前请检查 `defense_level`，`fortified` 的城需要 2 倍以上兵力
+
 ### 3. recruit —— 征兵
 ```json
 {"type": "recruit", "target": "成都", "amount": 100}

@@ -237,16 +237,23 @@ def get_state(session: Session, game_id: int, agent: Agent):
 
     # ── 你的城池（精确信息） ──────────────────────────────
     last_occupied = {}
+    def_works = {}
+    resources_raw_early = {}
     if game.resources:
-        last_occupied = json.loads(game.resources).get("_last_occupied", {})
+        resources_raw_early = json.loads(game.resources)
+        last_occupied = resources_raw_early.get("_last_occupied", {})
+        def_works = resources_raw_early.get("_defense_works", {})
     your_cities = []
     own_names = set()
     for c in cities:
         if c.owner == your_faction:
             neighbors = CITY_ADJACENCY.get(c.name, [])
+            dlevel = def_works.get(c.name, 0)
             city_data = {
                 "name": c.name,
                 "troops": c.troops,
+                "defense_level": dlevel,
+                "defense_status": _defense_status(dlevel),
                 "neighbors": neighbors,
             }
             if c.name in last_occupied:
@@ -263,9 +270,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
                 adjacent_to_own.add(nb)
 
     # ── 宣战信息: 被宣战方看到宣战方全部精确兵力 ──────────
-    resources_raw = {}
-    if game.resources:
-        resources_raw = json.loads(game.resources)
+    resources_raw = resources_raw_early
     war_revealed_cities: set[str] = set()
     war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
     if war_revealed_by:
@@ -283,17 +288,24 @@ def get_state(session: Session, game_id: int, agent: Agent):
 
     known_cities = []
     visible_cities = adjacent_to_own | war_revealed_cities | alliance_cities
+    # 联盟城 / 邻接城 → 防御度精确可见
+    exact_defense_cities = adjacent_to_own | alliance_cities
     for c in cities:
         if c.name in own_names:
             continue
         owner_display = c.owner if c.owner else "中立"
+        dlevel = def_works.get(c.name, 0)
+        dstatus = _defense_status(dlevel)
         if c.name in visible_cities:
             cd = {
                 "name": c.name,
                 "owner": owner_display,
                 "troops": c.troops,
+                "defense_status": dstatus,
                 "info_freshness": "current",
             }
+            if c.name in exact_defense_cities:
+                cd["defense_level"] = dlevel
             if c.name in last_occupied:
                 cd["last_occupied_at"] = last_occupied[c.name]
             known_cities.append(cd)
@@ -302,6 +314,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
                 "name": c.name,
                 "owner": owner_display,
                 "troops_estimate": _classify_troops(c.troops),
+                "defense_status": dstatus,
                 "info_freshness": "rumor",
             })
 
@@ -330,12 +343,9 @@ def get_state(session: Session, game_id: int, agent: Agent):
         last_intentions = json.loads(game.last_tick_intentions)
 
     # ── 防御工事（你的城可见） ────────────────────────────
-    resources_raw = {}
-    if game.resources:
-        resources_raw = json.loads(game.resources)
     your_defense_works = {}
     for city_name in own_names:
-        your_defense_works[city_name] = resources_raw.get("_defense_works", {}).get(city_name, 0)
+        your_defense_works[city_name] = def_works.get(city_name, 0)
 
     # ── 联盟状态 ────────────────────────────────────────────
     all_alliances = resources_raw.get("_alliances", [])
@@ -495,6 +505,16 @@ def _classify_troops(troops: int) -> str:
         return "medium"
     else:
         return "high"
+
+
+def _defense_status(level: int) -> str:
+    """防御度 → 模糊状态 (邻接/联盟外可见)。"""
+    if level >= 2:
+        return "fortified"
+    elif level == 1:
+        return "normal"
+    else:
+        return "exposed"
 
 
 def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[dict]:
