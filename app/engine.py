@@ -14,15 +14,9 @@ _DAYAN_PATH = Path(__file__).resolve().parent.parent / "DaYan Engine"
 if _DAYAN_PATH.exists() and str(_DAYAN_PATH) not in sys.path:
     sys.path.insert(0, str(_DAYAN_PATH))
 
-try:
-    from dayan_engine.core.types import BattleConfig  # noqa: E402
-    from dayan_engine.core.battle import run_battle  # noqa: E402
-    from dayan_engine.narrator.template_narrator import generate as generate_narrative  # noqa: E402
-    HAS_DAYAN = True
-except ImportError:
-    HAS_DAYAN = False
-
-USE_DAYAN_ENGINE = HAS_DAYAN  # Toggle: set False to fall back to simple combat
+from dayan_engine.core.types import BattleConfig  # noqa: E402
+from dayan_engine.core.battle import run_battle  # noqa: E402
+from dayan_engine.narrator.template_narrator import generate as generate_narrative  # noqa: E402
 
 # Faction → Three Kingdoms general traits (from Dayan Engine presets)
 FACTION_TRAITS: dict[str, dict[str, float]] = {
@@ -79,12 +73,6 @@ GRAIN_PER_CITY = 80          # 每城每 tick 粮草产出（从 100 降到 80�
 MAX_LOAN = 200               # 最大负债额
 LOAN_RECRUIT_PENALTY = 0.5   # 负债后下回合招兵 cost +50%
 
-# ── 战斗参数（详见 docs/combat-rules.md §2） ──────────────────
-ATTACKER_WIN_LOSS = 0.25        # 进攻胜: 损失 25% (曾 30%)    —— §2.1
-ATTACKER_LOSE_LOSS = 0.60       # 进攻败: 损失 60% (曾 100%)   —— §2.1
-ATTACKER_MIN_LOSS = 0.10        # 进攻方最低损失 10%            —— §2.1
-DEFENDER_WIN_LOSS = 0.50        # 防守胜: 守方损失 50%          —— §2.2
-DEFENDER_LOSE_LOSS = 0.30       # 防守败: 守方损失 30%          —— §2.2
 GARRISON_MIN = 100
 MAX_RECRUIT_PER_CITY = 200
 
@@ -1110,44 +1098,40 @@ def tick(session: Session, game_id: int):
         sorted_attackers = sorted(faction_attack.items(), key=lambda x: x[1], reverse=True)
         best_attacker_faction, best_attack_power = sorted_attackers[0]
 
-        # ── Dayan Engine battle resolution ──────────────────
-        dayan_result = None
-        dayan_narrative = ""
-        if USE_DAYAN_ENGINE:
-            try:
-                attacker_traits = FACTION_TRAITS.get(best_attacker_faction, {})
-                defender_faction_name = city.owner or "中立"
-                defender_traits = FACTION_TRAITS.get(
-                    defender_faction_name,
-                    {"主帅": 0.50, "军师": 0.50, "先锋": 0.50, "后勤": 0.50, "军资": 0.50, "联盟": 0.50},
-                )
+        # ── 大衍引擎战役判定（唯一引擎） ──────────────────
+        import traceback as _traceback
+        attacker_traits = FACTION_TRAITS.get(best_attacker_faction, {})
+        defender_faction_name = city.owner or "中立"
+        defender_traits = FACTION_TRAITS.get(
+            defender_faction_name,
+            {"主帅": 0.50, "军师": 0.50, "先锋": 0.50, "后勤": 0.50, "军资": 0.50, "联盟": 0.50},
+        )
 
-                battle_seed = game.tick * 1000 + hash(city_name) % 1000
-                n1 = (game.tick * 7 + hash(city_name) * 11) % 100 + 1
-                n2 = (game.tick * 13 + hash(city_name) * 17) % 100 + 1
-                n3 = (game.tick * 19 + hash(city_name) * 23) % 100 + 1
+        battle_seed = game.tick * 1000 + hash(city_name) % 1000
+        n1 = (game.tick * 7 + hash(city_name) * 11) % 100 + 1
+        n2 = (game.tick * 13 + hash(city_name) * 17) % 100 + 1
+        n3 = (game.tick * 19 + hash(city_name) * 23) % 100 + 1
 
-                config = BattleConfig(
-                    attacker_name=FACTION_GENERAL_NAME.get(best_attacker_faction, best_attacker_faction),
-                    defender_name=FACTION_GENERAL_NAME.get(defender_faction_name, defender_faction_name),
-                    attacker_traits=attacker_traits,
-                    defender_traits=defender_traits,
-                    time_desc=f"第{game.tick}回合",
-                    location=city_name,
-                    cast_nums=(n1, n2, n3),
-                )
-                dayan_result = run_battle(config, seed=battle_seed)
-                dayan_narrative = generate_narrative(dayan_result)
-            except Exception:
-                dayan_result = None
-                dayan_narrative = ""
+        config = BattleConfig(
+            attacker_name=FACTION_GENERAL_NAME.get(best_attacker_faction, best_attacker_faction),
+            defender_name=FACTION_GENERAL_NAME.get(defender_faction_name, defender_faction_name),
+            attacker_traits=attacker_traits,
+            defender_traits=defender_traits,
+            time_desc=f"第{game.tick}回合",
+            location=city_name,
+            cast_nums=(n1, n2, n3),
+        )
+        try:
+            dayan_result = run_battle(config, seed=battle_seed)
+            dayan_narrative = generate_narrative(dayan_result)
+        except Exception as e:
+            print(f"[DaYan ERROR] Battle at {city_name} tick={game.tick}: {type(e).__name__}: {e}")
+            _traceback.print_exc()
+            raise RuntimeError(
+                f"大衍引擎判定失败 — {city_name} 第{game.tick}回合: {type(e).__name__}: {e}"
+            ) from e
 
-        # Dayan Engine is the sole determinant of battle outcomes.
-        # Fall back to power comparison only if Dayan Engine is unavailable.
-        if dayan_result is not None:
-            attacker_wins = (dayan_result.winner == "attacker")
-        else:
-            attacker_wins = total_attack > defense_power
+        attacker_wins = (dayan_result.winner == "attacker")
 
         # Public event summary
         public_event: dict = {"city": city_name}
@@ -1173,8 +1157,8 @@ def tick(session: Session, game_id: int):
         if attacker_wins:
             # ── Attacker wins ──────────────────────────────
             winner_faction = best_attacker_faction
-            atk_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_WIN_LOSS
-            other_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_LOSE_LOSS
+            atk_loss_pct = dayan_result.total_casualties_attacker
+            other_loss_pct = dayan_result.total_casualties_attacker
             troop_losses: dict[str, int] = {}
             for faction, committed in faction_attack.items():
                 if faction == winner_faction:
@@ -1200,8 +1184,8 @@ def tick(session: Session, game_id: int):
             detail["troop_losses"] = troop_losses
         else:
             # ── Defender wins ──────────────────────────────
-            def_loss_pct = dayan_result.total_casualties_defender if dayan_result else DEFENDER_WIN_LOSS
-            atk_loss_pct = dayan_result.total_casualties_attacker if dayan_result else ATTACKER_LOSE_LOSS
+            def_loss_pct = dayan_result.total_casualties_defender
+            atk_loss_pct = dayan_result.total_casualties_attacker
             new_troops = max(math.floor(city.troops * (1 - def_loss_pct)), GARRISON_MIN)
             combat_changes[city_name] = (city.owner, new_troops)
 
