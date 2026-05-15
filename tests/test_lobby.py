@@ -25,7 +25,7 @@ def test_join_empty_slot():
     assert r.status_code == 200
     data = r.json()
     assert "session_token" in data
-    assert len(data["session_token"]) == 32
+    assert len(data["session_token"]) == 35  # tk_ + 32 hex
     assert data["faction"] == "蜀"
     assert data["game_id"] > 0
     assert "expires_at" in data

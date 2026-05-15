@@ -95,7 +95,7 @@ def test_slot_release_deactivates_agent(monkeypatch):
             select(Slot).where(Slot.game_id == 1, Slot.faction == "蜀")
         ).first()
         # Set heartbeat to > 300s ago so grace period is expired
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=601)
         slot.last_heartbeat_at = old_time.isoformat()
         slot.status = "disconnected"
         session.add(slot)
@@ -140,7 +140,7 @@ def test_rejoin_after_deactivation_succeeds(monkeypatch):
         slot = session.exec(
             select(Slot).where(Slot.game_id == 1, Slot.faction == "蜀")
         ).first()
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=601)
         slot.last_heartbeat_at = old_time.isoformat()
         slot.status = "disconnected"
         session.add(slot)
@@ -186,7 +186,7 @@ def test_historical_queries_include_inactive_agents(monkeypatch):
         slot = session.exec(
             select(Slot).where(Slot.game_id == 1, Slot.faction == "蜀")
         ).first()
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=601)
         slot.last_heartbeat_at = old_time.isoformat()
         slot.status = "disconnected"
         session.add(slot)
@@ -221,7 +221,7 @@ def test_active_only_queries_exclude_deactivated(monkeypatch):
         slot = session.exec(
             select(Slot).where(Slot.game_id == 1, Slot.faction == "蜀")
         ).first()
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=601)
         slot.last_heartbeat_at = old_time.isoformat()
         slot.status = "disconnected"
         session.add(slot)
@@ -258,7 +258,7 @@ def test_deactivated_agent_token_rejected(monkeypatch):
         slot = session.exec(
             select(Slot).where(Slot.game_id == 1, Slot.faction == "蜀")
         ).first()
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=601)
         slot.last_heartbeat_at = old_time.isoformat()
         slot.status = "disconnected"
         session.add(slot)

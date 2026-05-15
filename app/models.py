@@ -6,7 +6,7 @@ from sqlmodel import SQLModel, Field
 
 
 def _new_token():
-    return uuid.uuid4().hex[:16]
+    return f"tk_{secrets.token_hex(16)}"  # tk_ + 32 hex chars, shell-friendly
 
 
 def _new_uuid():

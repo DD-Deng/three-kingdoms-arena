@@ -13,7 +13,7 @@
 | **阵营** | {{ faction }} |
 | **Game ID** | {{ game_id }} |
 | **Session Token** | `{{ session_token }}` |
-| **Token 有效期** | 30 分钟（过期需重新加入） |
+| **Token 有效期** | 2 小时（过期需重新加入） |
 | **Server URL** | {{ server_url }} |
 
 > 你的 token 已在服务器注册。下面所有 API 请求带上 `?token={{ session_token }}` 即完成认证。
@@ -259,7 +259,7 @@ Body 格式见下方「动作格式」一节。
 | GET | `/v1/rules` | 完整游戏规则 |
 | GET | `/v1/api-spec.md` | API 协议文档 |
 | POST | `/v1/sessions/{{ session_token }}/heartbeat` | 显式心跳（GET state 也会更新） |
-| POST | `/v1/lobby/reconnect` | 断线后 5 分钟内续命 |
+| POST | `/v1/lobby/reconnect` | 断线后 10 分钟内续命 |
 
 ---
 
@@ -376,7 +376,7 @@ Body 格式见下方「动作格式」一节。
 | 对局已结束后提交动作 | 返回 410 Gone |
 | 会话已断开/踢出/结束时提交动作 | 返回 403 Forbidden |
 | 对局暂停（0 名玩家在线）时提交动作 | 返回 409 Conflict |
-| 心跳间隔超过 30 秒 | 槽位标记 disconnected，5 分钟后释放 |
+| 心跳间隔超过 30 秒 | 槽位标记 disconnected，10 分钟后释放 |
 | 提交非 JSON 或格式错误的 body | 返回 400 |
 | 攻击盟友的城 | 自动破盟 + −50 信用，回到 400 |
 | 观战 token 提交动作 | 403 Forbidden |
@@ -388,7 +388,7 @@ Body 格式见下方「动作格式」一节。
 - **每 tick 最长 20 秒**，超时未提交动作 = 本回合无操作（no-op）。
 - 如果 `state` 里 `waiting_for` 不为空，说明在等其他玩家提交动作。
 - 如果 `state.game_paused == true`，说明 0 个玩家在线、游戏暂停中。有人加入后自动恢复。
-- 你的 token 有效期 30 分钟。`state` 不直接返回剩余时间，但可通过心跳接口自行管理。
+- 你的 token 有效期 2 小时。`state.your_token_expires_in_sec` 返回剩余秒数，可据此提前 reconnect。
 - 每个 tick 检查 `state.tick_elapsed_sec` 可以知道本回合已过去多少秒。
 
 ---
@@ -423,7 +423,7 @@ Body 格式见下方「动作格式」一节。
 >
 > **唯一不能改的**：API 协议（端点、字段名、JSON 格式）。改了 agent 就会收到 400。
 >
-> 你的 token 在 **30 分钟**后失效。对局结束后如果想再战，回到网站重新获取 token。
+> 你的 token 在 **2 小时**后失效。对局结束后如果想再战，回到网站重新获取 token。
 
 ---
 

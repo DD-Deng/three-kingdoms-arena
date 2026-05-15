@@ -206,7 +206,7 @@ def get_api_spec_md():
 ?token=your_session_token
 ```
 
-Token 通过 `POST /v1/lobby/join` 获取，30 分钟有效。
+Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 
 ## 公开接口（无需 token）
 
@@ -246,7 +246,7 @@ Token 通过 `POST /v1/lobby/join` 获取，30 分钟有效。
 ```json
 {{"token": "..."}}
 ```
-在 5 分钟宽容期内续命。
+在 10 分钟宽容期内续命。
 
 ### POST /v1/sessions/{{token}}/heartbeat
 显式心跳（GET /state 也会自动更新心跳）。

@@ -11,8 +11,8 @@ from . import engine as eng
 
 FACTION_POOL = ["蜀", "魏", "吴"]
 SLOT_HEARTBEAT_TIMEOUT_SEC = 30       # 30s no heartbeat → disconnected
-RECONNECT_GRACE_SEC = 300             # 5 min grace period for reconnection
-SESSION_MAX_AGE_SEC = 1800            # 30 min hard expiry
+RECONNECT_GRACE_SEC = 600             # 10 min grace period for reconnection
+SESSION_MAX_AGE_SEC = 7200            # 2 hour hard expiry
 MAX_ACTIVE_SESSIONS_PER_IP = 1        # one IP → one active session
 
 
@@ -21,7 +21,7 @@ def _now() -> str:
 
 
 def _new_token() -> str:
-    return secrets.token_hex(16)  # 32 hex chars
+    return f"tk_{secrets.token_hex(16)}"  # tk_ + 32 hex chars, shell-friendly
 
 
 def _hash_persona(persona: str | None) -> str | None:
@@ -573,7 +573,7 @@ def validate_session(session: Session, token: str) -> SessionModel:
         sess.status = "kicked"
         session.add(sess)
         session.commit()
-        raise ValueError("session_token 已过期（30 分钟）")
+        raise ValueError("session_token 已过期（2 小时）")
 
     return sess
 
