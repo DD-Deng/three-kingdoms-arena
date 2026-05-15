@@ -49,3 +49,10 @@ ECONOMIC_CATCHUP_ENABLED: bool = os.environ.get(
 ECONOMIC_CATCHUP_PER_CITY_BEHIND: float = float(
     os.environ.get("ECONOMIC_CATCHUP_PER_CITY_BEHIND", "0.10")
 )
+
+# Managed AI: when enabled, empty faction slots are filled by rule-based AI agents.
+# Disable to require all-human lobbies.
+ENABLE_MANAGED_AI: bool = os.environ.get("ENABLE_MANAGED_AI", "true").lower() == "true"
+
+# Managed AI aggression: 0.0 = purely defensive, 1.0 = very aggressive.
+MANAGED_AI_AGGRESSION: float = float(os.environ.get("MANAGED_AI_AGGRESSION", "0.3"))

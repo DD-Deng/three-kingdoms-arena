@@ -60,10 +60,14 @@ def test_join_creates_active_agent(monkeypatch):
 
     agents = _get_agents()
     shu_agents = [a for a in agents if a.faction == "蜀"]
-    assert len(shu_agents) == 1
-    assert shu_agents[0].is_active is True
-    assert shu_agents[0].deactivated_at is None
-    assert shu_agents[0].deactivated_reason is None
+    # 1 deactivated managed agent + 1 active self_hosted agent
+    assert len(shu_agents) == 2
+    active = [a for a in shu_agents if a.is_active]
+    assert len(active) == 1
+    assert active[0].is_active is True
+    assert active[0].deactivated_at is None
+    assert active[0].deactivated_reason is None
+    assert active[0].agent_mode == "self_hosted"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -101,17 +105,20 @@ def test_slot_release_deactivates_agent(monkeypatch):
     r = client.get("/v1/lobby/status")
     assert r.status_code == 200
 
-    # Agent should now be deactivated
+    # After auto-release, a managed agent is spawned for the open slot
     agents = _get_active_agents()
     shu_active = [a for a in agents if a.faction == "蜀"]
-    assert len(shu_active) == 0, f"Expected 0 active agents, got {shu_active}"
+    assert len(shu_active) == 1, f"Expected 1 active managed agent, got {shu_active}"
+    assert shu_active[0].agent_mode == "managed"
 
-    # But agent record still exists (soft delete)
+    # Original agent records still exist (soft delete)
     all_agents = _get_agents()
     shu_all = [a for a in all_agents if a.faction == "蜀"]
-    assert len(shu_all) == 1
-    assert shu_all[0].is_active is False
-    assert shu_all[0].deactivated_reason == "slot_released"
+    assert len(shu_all) == 3, f"Expected 3 records, got {len(shu_all)}"  # managed(deactivated) + BYOA(deactivated) + managed(active)
+    inactive = [a for a in shu_all if not a.is_active]
+    assert len(inactive) == 2
+    reasons = {a.deactivated_reason for a in inactive}
+    assert "slot_released" in reasons
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -150,14 +157,15 @@ def test_rejoin_after_deactivation_succeeds(monkeypatch):
     )
     assert r.status_code == 200, f"Re-join should succeed, got {r.status_code}: {r.text}"
 
-    # Two agent records total — one inactive, one active
+    # Multiple agent records: orig managed (deactivated) + BYOA (deactivated)
+    # + managed spawned after release (deactivated by rejoin) + new BYOA (active)
     all_agents = _get_agents()
     shu_agents = [a for a in all_agents if a.faction == "蜀"]
-    assert len(shu_agents) == 2, f"Expected 2 agent records, got {len(shu_agents)}"
+    assert len(shu_agents) >= 3, f"Expected >=3 agent records, got {len(shu_agents)}"
     inactive = [a for a in shu_agents if not a.is_active]
     active = [a for a in shu_agents if a.is_active]
-    assert len(inactive) == 1
     assert len(active) == 1
+    assert active[0].agent_mode == "self_hosted"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -187,10 +195,11 @@ def test_historical_queries_include_inactive_agents(monkeypatch):
     client.get("/v1/lobby/status")
 
     # Unfiltered query returns all agents (including inactive)
+    # After release: managed(deactivated) + BYOA(deactivated) + managed(active, spawned for open slot)
     all_agents = _get_agents()
     shu_agents = [a for a in all_agents if a.faction == "蜀"]
-    assert len(shu_agents) == 1
-    assert shu_agents[0].is_active is False
+    assert len(shu_agents) >= 2
+    assert any(not a.is_active for a in shu_agents)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -220,11 +229,15 @@ def test_active_only_queries_exclude_deactivated(monkeypatch):
 
     client.get("/v1/lobby/status")
 
-    # Active-only query excludes 蜀
+    # A managed agent is spawned for the now-open 蜀 slot
+    # Active-only query should include the managed agent
     active = _get_active_agents()
     active_factions = {a.faction for a in active}
-    assert "蜀" not in active_factions, f"蜀 should be excluded, got {active_factions}"
+    assert "蜀" in active_factions, f"Managed agent should fill open slot, got {active_factions}"
     assert "魏" in active_factions
+    # The 蜀 active agent should be managed
+    shu_agents = [a for a in active if a.faction == "蜀"]
+    assert shu_agents[0].agent_mode == "managed"
 
 
 # ═══════════════════════════════════════════════════════════════

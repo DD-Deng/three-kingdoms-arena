@@ -884,11 +884,15 @@ def tick(session: Session, game_id: int):
                 for d in diplomacy_messages
             )
             if not already and msg:
-                diplomacy_messages.append({
+                entry: dict = {
                     "from_faction": faction,
                     "message": msg,
                     "diplomacy_type": d_type,
-                })
+                }
+                if ag and ag.agent_mode == "managed":
+                    entry["from_faction"] = f"{faction}[managed]"
+                    entry["is_managed"] = True
+                diplomacy_messages.append(entry)
 
             # ── alliance_propose: 发起联盟提议 ────────────
             if d_type == "alliance_propose":
@@ -2029,83 +2033,100 @@ def _build_llm_provider(agent: Agent):
 
 
 def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | None:
-    """Auto-decide for a managed agent using LLM."""
+    """Rule-based auto-decide for managed AI agents.
+
+    Simple, predictable behaviour — deliberately not LLM-smart.
+    """
+    from .config import MANAGED_AI_AGGRESSION
+    import random
+
     try:
-        from agents.prompts import build_prompt
-
         state = get_state(session, game_id, agent)
+        your_cities = state.get("your_cities", [])
+        your_resources = state.get("your_resources", {})
+        grain = your_resources.get("grain", 0)
         valid_actions = state.get("valid_actions", [])
-        persona = agent.persona_config or "你是一位三国时期的君主。"
+        known_cities = state.get("known_cities", [])
+        pending_alliance = state.get("pending_alliance_from")
+        your_ally = state.get("your_alliance_with")
 
-        system_prompt, user_prompt = build_prompt(persona, state)
-        provider = _build_llm_provider(agent)
+        actions: list[dict] = []
 
-        parsed = provider.decide(system_prompt, user_prompt, valid_actions)
-        actions = parsed.get("actions", [])
-        if not actions and "action" in parsed:
-            actions = [parsed["action"]]
-        public_speech = parsed.get("public_speech", "")
+        # 1. Defend cities with < 200 troops
+        for city in your_cities:
+            if city["troops"] < 200:
+                if any(a["type"] == "defend" and a["target"] == city["name"] for a in valid_actions):
+                    actions.append({"type": "defend", "target": city["name"]})
 
-        # Validate & clamp actions
-        clamped = []
-        for act in actions:
-            atype = act.get("type")
-            if atype == "attack":
-                from_c = act.get("from")
-                target = act.get("target")
-                troops = act.get("troops", 0)
-                valid = next((a for a in valid_actions if a["type"] == "attack" and a.get("from") == from_c and a.get("target") == target), None)
-                if valid:
-                    troops = min(troops, valid.get("max_troops", troops))
-                    if troops > 0:
-                        clamped.append({"type": "attack", "from": from_c, "target": target, "troops": troops})
-            elif atype == "defend":
-                target = act.get("target")
-                valid = next((a for a in valid_actions if a["type"] == "defend" and a.get("target") == target), None)
-                if valid:
-                    clamped.append({"type": "defend", "target": target})
-            elif atype == "recruit":
-                target = act.get("target")
-                amount = act.get("amount", 0)
-                valid = next((a for a in valid_actions if a["type"] == "recruit" and a.get("target") == target), None)
-                if valid:
-                    amount = min(amount, valid.get("max_amount", amount))
+        # 2. Recruit: use half grain to recruit troops to weakest city
+        if your_cities and grain > 0:
+            weakest = min(your_cities, key=lambda c: c["troops"])
+            recruit_valid = next(
+                (a for a in valid_actions if a["type"] == "recruit" and a.get("target") == weakest["name"]),
+                None,
+            )
+            if recruit_valid:
+                max_amount = recruit_valid.get("max_amount", 0)
+                if max_amount > 0:
+                    recruit_cost = 3 if your_resources.get("recruit_penalty") else 2
+                    affordable = grain // (2 * recruit_cost)
+                    amount = min(affordable, max_amount)
                     if amount > 0:
-                        clamped.append({"type": "recruit", "target": target, "amount": amount})
-            elif atype == "march":
-                from_c = act.get("from")
-                to = act.get("to")
-                troops = act.get("troops", 0)
-                valid = next((a for a in valid_actions if a["type"] == "march" and a.get("from") == from_c and a.get("to") == to), None)
-                if valid:
-                    troops = min(troops, valid.get("max_troops", troops))
-                    if troops > 0:
-                        clamped.append({"type": "march", "from": from_c, "to": to, "troops": troops})
-            elif atype == "diplomacy":
-                target = act.get("target")
-                valid = next((a for a in valid_actions if a["type"] == "diplomacy" and a.get("target") == target), None)
-                if valid:
-                    clamped.append({
-                        "type": "diplomacy",
-                        "target": target,
-                        "diplomacy_type": act.get("diplomacy_type", "message"),
-                        "message": act.get("message", ""),
-                    })
+                        actions.append({"type": "recruit", "target": weakest["name"], "amount": amount})
 
-        if not clamped:
-            # Fallback: defend first own city
-            your_cities = state.get("your_cities", [])
+        # 3. Diplomacy: respond to alliance proposals (70% accept if not already allied)
+        if pending_alliance and not your_ally:
+            if random.random() < 0.7:
+                actions.append({
+                    "type": "diplomacy",
+                    "target": pending_alliance,
+                    "diplomacy_type": "alliance_accept",
+                    "message": "善",
+                })
+
+        # 4. Attack — only when we have decisive advantage (2:1) and aggression roll passes
+        if your_cities and random.random() < MANAGED_AI_AGGRESSION:
+            for my_city in your_cities:
+                if my_city["troops"] <= 200:
+                    continue
+                for neighbor_name in my_city.get("neighbors", []):
+                    neighbor = next((c for c in known_cities if c["name"] == neighbor_name), None)
+                    if neighbor is None:
+                        continue
+                    owner = neighbor.get("owner", "中立")
+                    if owner == agent.faction or owner == "中立":
+                        continue
+                    # Don't attack ally
+                    if your_ally and owner == your_ally:
+                        continue
+                    enemy_troops = neighbor.get("troops", 0)
+                    if my_city["troops"] > enemy_troops * 2:
+                        troops_to_send = int(my_city["troops"] * 0.6)
+                        if troops_to_send > 0:
+                            actions.append({
+                                "type": "attack",
+                                "from": my_city["name"],
+                                "target": neighbor_name,
+                                "troops": troops_to_send,
+                            })
+                            break
+                else:
+                    continue
+                break
+
+        # Fallback: defend weakest city
+        if not actions:
             if your_cities:
-                clamped = [{"type": "defend", "target": your_cities[0]["name"]}]
+                weakest = min(your_cities, key=lambda c: c["troops"])
+                actions = [{"type": "defend", "target": weakest["name"]}]
             else:
-                clamped = [{"type": "defend", "target": state.get("known_cities", [{}])[0].get("name", "洛阳")}]
+                actions = [{"type": "defend", "target": "成都"}]
 
-        submit_actions(session, game_id, agent, clamped, public_speech=public_speech)
-        return {"actions": clamped, "speech": public_speech}
+        submit_actions(session, game_id, agent, actions, public_speech="")
+        return {"actions": actions, "speech": ""}
 
     except Exception as e:
         print(f"[auto_decide_managed] Error for {agent.agent_name}({agent.faction}): {e}")
-        # Fallback: defend first own city
         try:
             cities = session.exec(select(City).where(City.game_id == game_id, City.owner == agent.faction)).all()
             if cities:
@@ -2113,6 +2134,52 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
         except Exception:
             pass
         return None
+
+
+def _ensure_managed_for_open_slots(session: Session, game_id: int):
+    """Create managed AI agents for any faction that has no active agent."""
+    from .config import ENABLE_MANAGED_AI
+
+    if not ENABLE_MANAGED_AI:
+        return
+
+    for faction in FACTION_POOL:
+        existing = session.exec(
+            select(Agent).where(
+                Agent.game_id == game_id,
+                Agent.faction == faction,
+                Agent.is_active == True,
+            )
+        ).first()
+        if existing is None:
+            cfg = MANAGED_DEFAULTS[faction]
+            try:
+                player = Player()
+                session.add(player)
+                session.flush()
+
+                reg = RegisteredAgent(
+                    player_id=player.player_id,
+                    agent_name=cfg["name"],
+                )
+                session.add(reg)
+                session.flush()
+
+                agent = Agent(
+                    game_id=game_id,
+                    registered_agent_id=reg.agent_id,
+                    agent_name=cfg["name"],
+                    faction=faction,
+                    agent_mode="managed",
+                    persona_config=cfg["persona"],
+                )
+                session.add(agent)
+                session.flush()
+                print(f"[managed] Created managed agent for {faction} in game #{game_id}")
+            except Exception as e:
+                print(f"[managed] Failed to create agent for {faction}: {e}")
+                session.rollback()
+    session.commit()
 
 
 def pvp_maybe_advance(session: Session, game_id: int):
@@ -2135,6 +2202,9 @@ def pvp_maybe_advance(session: Session, game_id: int):
     agents = session.exec(
         select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
     ).all()
+
+    # Ensure every open faction has a managed agent to drive the game
+    _ensure_managed_for_open_slots(session, game_id)
 
     occupied_factions = {s.faction for s in slots if s.status == "occupied"}
 

@@ -95,6 +95,9 @@ def _create_active_game(session: Session) -> Game:
 
 def _ensure_managed_agents(session: Session, game: Game):
     """Ensure each faction has a managed AI agent if the slot is not player-occupied."""
+    from .config import ENABLE_MANAGED_AI
+    if not ENABLE_MANAGED_AI:
+        return
     existing_agents = session.exec(
         select(Agent).where(Agent.game_id == game.id, Agent.is_active == True)
     ).all()
@@ -295,6 +298,9 @@ def get_lobby_status(session: Session) -> dict:
 
         slots_status[faction] = info
 
+    # Ensure managed agents for any newly-opened slots
+    eng._ensure_managed_for_open_slots(session, game.id)
+
     # Current tick info
     cities = session.exec(
         select(eng.City).where(eng.City.game_id == game.id)
@@ -488,7 +494,6 @@ def _register_player_agent(
     ip: str,
 ):
     """Register a self-hosted agent for the joining player, replacing any managed AI."""
-    # Remove existing managed AI agent for this faction
     existing_agents = session.exec(
         select(Agent).where(
             Agent.game_id == game.id,
@@ -499,6 +504,11 @@ def _register_player_agent(
     default_names = [eng.MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL]
     for a in existing_agents:
         if a.agent_name in default_names:
+            # Soft-deactivate managed AI — preserve history
+            a.is_active = False
+            a.deactivated_at = _now()
+            a.deactivated_reason = "replaced_by_player"
+            session.add(a)
             # Delete submitted actions from this agent for current tick
             actions_to_del = session.exec(
                 select(eng.Action).where(
@@ -509,7 +519,6 @@ def _register_player_agent(
             ).all()
             for act in actions_to_del:
                 session.delete(act)
-            session.delete(a)
         else:
             # Non-default agent already occupies this faction
             raise ValueError(f"势力 [{faction}] 已被玩家占用")
