@@ -28,8 +28,8 @@ ADMIN_TOKEN: str = os.environ.get("ADMIN_TOKEN", "admin-dev-token")
 BASE_URL: str = os.environ.get("BASE_URL", ARENA_SERVER_URL)
 
 # Tick advancement timing
-TICK_INTERVAL_SEC: int = int(os.environ.get("TICK_INTERVAL_SEC", "5"))
-TICK_TIMEOUT_SEC: int = int(os.environ.get("TICK_TIMEOUT_SEC", "8"))
+TICK_INTERVAL_SEC: int = int(os.environ.get("TICK_INTERVAL_SEC", "15"))
+TICK_TIMEOUT_SEC: int = int(os.environ.get("TICK_TIMEOUT_SEC", "20"))
 MIN_OCCUPIED_TO_RUN: int = int(os.environ.get("MIN_OCCUPIED_TO_RUN", "1"))
 
 # Restrict one faction per IP. Default False for dev (same machine multi-agent).
