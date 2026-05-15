@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timezone
 from sqlmodel import Session, select
 
-from .models import Game, Slot, Session as SessionModel, Agent, Player, RegisteredAgent
+from .models import Game, Slot, Session as SessionModel, Agent, Player, RegisteredAgent, BattleHistory
 from . import engine as eng
 
 
@@ -189,6 +189,31 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
         s.status = "open"
         s.session_token = None
         session.add(s)
+
+    # Create BattleHistory record for the finished game
+    try:
+        existing_bh = session.exec(
+            select(BattleHistory).where(BattleHistory.game_id == game.id)
+        ).first()
+        if not existing_bh:
+            cities = session.exec(
+                select(eng.City).where(eng.City.game_id == game.id)
+            ).all()
+            summary = json.dumps(
+                {"cities": [{"name": c.name, "owner": c.owner, "troops": c.troops} for c in cities]},
+                ensure_ascii=False,
+            )
+            bh = BattleHistory(
+                game_id=game.id,
+                model="pvp",
+                winner=game.winner,
+                total_ticks=game.tick,
+                summary=summary,
+                status=game.status,
+            )
+            session.add(bh)
+    except Exception:
+        pass
 
     session.commit()
 

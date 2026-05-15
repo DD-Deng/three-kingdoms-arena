@@ -11,7 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from sqlmodel import Session, select
 from pathlib import Path
 
@@ -669,6 +669,228 @@ def join_current_game(body: dict, session: Session = Depends(get_session)):
         return eng.join_current_game(session, name, faction)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# 战报回顾 API —— GET /v1/games/{id}/result | /commentary | /replay
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.get("/v1/games/{game_id}/result")
+def game_result(game_id: int, session: Session = Depends(get_session)):
+    """Return full game result summary. Returns 425 if still in progress."""
+    import json
+
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+
+    if game.status != "finished":
+        raise HTTPException(status_code=425, detail="Game still in progress")
+
+    # ── Cities ──────────────────────────────────────────────
+    cities = session.exec(
+        select(eng.City).where(eng.City.game_id == game_id)
+    ).all()
+
+    final_cities = [
+        {"name": c.name, "owner": c.owner or "中立", "troops": c.troops}
+        for c in cities
+    ]
+
+    # ── Resources ───────────────────────────────────────────
+    resources_raw = {}
+    if game.resources:
+        resources_raw = json.loads(game.resources)
+
+    # ── Winner reason ───────────────────────────────────────
+    active_owners = {c.owner for c in cities if c.owner is not None}
+    if len(active_owners) == 1:
+        winner_reason = "elimination"
+    elif game.tick >= game.max_ticks:
+        winner_reason = "city_dominance" if game.winner else "tick_limit"
+    else:
+        winner_reason = "elimination"
+
+    # ── Faction stats from log file ─────────────────────────
+    faction_stats: dict[str, dict] = {
+        f: {"final_cities": 0, "peak_cities": 0, "kills": 0, "losses": 0}
+        for f in eng.FACTION_POOL
+    }
+
+    for c in cities:
+        if c.owner and c.owner in faction_stats:
+            faction_stats[c.owner]["final_cities"] += 1
+
+    # Read public log to compute peak cities and kills/losses
+    from .engine import PUBLIC_LOG_DIR
+    log_path = PUBLIC_LOG_DIR / f"{game_id}.jsonl"
+    if log_path.exists():
+        city_counts: dict[str, list] = {f: [] for f in eng.FACTION_POOL}
+        try:
+            for line in log_path.read_text(encoding="utf-8").strip().split("\n"):
+                if not line:
+                    continue
+                entry = json.loads(line)
+                tick_cities = entry.get("cities", [])
+                counts: dict[str, int] = {}
+                for c in tick_cities:
+                    owner = c.get("owner", "中立")
+                    if owner != "中立":
+                        counts[owner] = counts.get(owner, 0) + 1
+                for f in eng.FACTION_POOL:
+                    city_counts[f].append(counts.get(f, 0))
+
+                # Count kills/losses
+                for evt in entry.get("events", []):
+                    if evt.get("result") == "captured":
+                        loser = evt.get("defender_faction") or evt.get("previous_owner")
+                        winner_f = evt.get("attacker_faction") or evt.get("new_owner")
+                        if winner_f and winner_f in faction_stats:
+                            faction_stats[winner_f]["kills"] += 1
+                        if loser and loser in faction_stats:
+                            faction_stats[loser]["losses"] += 1
+
+            for f in eng.FACTION_POOL:
+                if city_counts[f]:
+                    faction_stats[f]["peak_cities"] = max(city_counts[f])
+        except Exception:
+            pass
+
+    # ── Key events ───────────────────────────────────────────
+    key_events: list[dict] = []
+    if log_path.exists():
+        try:
+            lines = log_path.read_text(encoding="utf-8").strip().split("\n")
+            for line in lines[-20:]:  # last 20 ticks
+                if not line:
+                    continue
+                entry = json.loads(line)
+                for evt in entry.get("events", []):
+                    if evt.get("result") in ("captured", "alliance_broken"):
+                        significance = "high" if evt.get("result") == "captured" else "medium"
+                        key_events.append({
+                            "tick": entry.get("tick"),
+                            "event": _describe_event(evt),
+                            "significance": significance,
+                        })
+        except Exception:
+            pass
+
+    # ── Duration ─────────────────────────────────────────────
+    duration_sec = None
+    if game.started_at and game.finished_at:
+        try:
+            from datetime import datetime, timezone
+            started = datetime.fromisoformat(game.started_at)
+            finished = datetime.fromisoformat(game.finished_at)
+            duration_sec = int((finished - started).total_seconds())
+        except Exception:
+            pass
+
+    return {
+        "game_id": game.id,
+        "status": game.status,
+        "winner": game.winner,
+        "winner_reason": winner_reason,
+        "tick_finished": game.tick,
+        "started_at": game.started_at,
+        "finished_at": game.finished_at,
+        "duration_sec": duration_sec,
+        "final_cities": final_cities,
+        "faction_stats": faction_stats,
+        "key_events": key_events[-10:],
+        "commentary_available": False,
+        "commentary_url": f"/v1/games/{game_id}/commentary",
+        "replay_url": f"/v1/games/{game_id}/replay",
+    }
+
+
+def _describe_event(evt: dict) -> str:
+    """Human-readable Chinese description of a combat/diplomacy event."""
+    result = evt.get("result", "")
+    city = evt.get("city", evt.get("target", ""))
+    attacker = evt.get("attacker_faction", "")
+    defender = evt.get("defender_faction", evt.get("previous_owner", ""))
+    if result == "captured":
+        if attacker and city:
+            return f"{attacker}占领{city}"
+        return f"城池{city}易主"
+    if result == "alliance_broken":
+        faction_a = evt.get("faction_a", evt.get("from_faction", ""))
+        faction_b = evt.get("faction_b", "")
+        if faction_a and faction_b:
+            return f"{faction_a}与{faction_b}盟约破裂"
+        return "盟约破裂"
+    return evt.get("type", result or "未知事件")
+
+
+@app.get("/v1/games/{game_id}/commentary")
+def game_commentary(game_id: int, session: Session = Depends(get_session)):
+    """Return LLM-generated battle commentary. 202 if not yet available."""
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status != "finished":
+        raise HTTPException(status_code=425, detail="Game still in progress")
+
+    # Check for existing commentary in BattleHistory
+    bh = session.exec(
+        select(BattleHistory).where(BattleHistory.game_id == game_id)
+    ).first()
+
+    if bh and bh.has_commentary:
+        log_files = session.exec(
+            select(BattleLogFile).where(
+                BattleLogFile.battle_id == bh.battle_id,
+                BattleLogFile.file_type == "commentary",
+            )
+        ).all()
+        for lf in log_files:
+            if lf.file_path and Path(lf.file_path).exists():
+                text = Path(lf.file_path).read_text(encoding="utf-8")
+                return PlainTextResponse(content=text, media_type="text/plain; charset=utf-8")
+
+    return JSONResponse(
+        status_code=202,
+        content={"detail": "评书正在生成中，请稍后再试", "retry_after_sec": 60},
+    )
+
+
+@app.get("/v1/games/{game_id}/replay")
+def game_replay(game_id: int, session: Session = Depends(get_session)):
+    """Return full per-tick public state array for offline analysis."""
+    import json
+
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+
+    from .engine import PUBLIC_LOG_DIR
+    log_path = PUBLIC_LOG_DIR / f"{game_id}.jsonl"
+
+    ticks: list[dict] = []
+    if log_path.exists():
+        try:
+            for line in log_path.read_text(encoding="utf-8").strip().split("\n"):
+                if not line:
+                    continue
+                entry = json.loads(line)
+                ticks.append({
+                    "tick": entry.get("tick"),
+                    "cities": entry.get("cities", []),
+                    "events": entry.get("events", []),
+                    "diplomacy": entry.get("diplomacy", []),
+                })
+        except Exception:
+            pass
+
+    return {
+        "game_id": game.id,
+        "status": game.status,
+        "total_ticks": len(ticks),
+        "ticks": ticks,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
