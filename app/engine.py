@@ -426,6 +426,9 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "your_trust_score": your_trust,
         "diplomacy_history": diplomacy_history,
         "war_revealed_by": war_revealed_by,
+        "diplomacy_relations": _compute_diplomacy_relations(
+            resources_raw, your_faction, game.tick
+        ),
         "valid_actions": valid_actions,
         "tick_started_at": game.tick_started_at,
         "tick_elapsed_sec": tick_elapsed_sec,
@@ -434,6 +437,51 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "game_paused": game_paused,
         "paused_reason": paused_reason,
     }
+
+
+def _compute_diplomacy_relations(
+    resources_raw: dict, my_faction: str, tick: int
+) -> dict[str, dict]:
+    """Build structured diplomacy_relations for state API.
+    Each pair has exactly one status: allied / at_war / neutral / hostile_recent_break.
+    """
+    BETRAYAL_COOLDOWN = 5
+    result: dict[str, dict] = {}
+    for other in FACTION_POOL:
+        if other == my_faction:
+            continue
+        my_res = resources_raw.get(my_faction, {})
+        other_res = resources_raw.get(other, {})
+        relation: dict = {"status": "neutral"}
+
+        # Check alliance
+        if my_res.get("alliance_with") == other:
+            relation["status"] = "allied"
+            relation["since_tick"] = my_res.get("alliance_since")
+            relation["trust_score"] = my_res.get("trust_score", 100)
+        elif other_res.get("alliance_with") == my_faction:
+            relation["status"] = "allied"
+            relation["since_tick"] = other_res.get("alliance_since")
+            relation["trust_score"] = my_res.get("trust_score", 100)
+
+        # Check war (overrides alliance — should not happen after this fix)
+        if my_res.get("war_declared_on") == other:
+            relation["status"] = "at_war"
+            relation["since_tick"] = my_res.get("war_declared_at")
+            relation["war_declared_by"] = "self"
+        elif other_res.get("war_declared_on") == my_faction:
+            relation["status"] = "at_war"
+            relation["since_tick"] = other_res.get("war_declared_at")
+            relation["war_declared_by"] = other
+
+        # Check hostile_recent_break (betrayal cooldown active)
+        betrayal_until = my_res.get("betrayal_until", 0)
+        if tick < betrayal_until and relation["status"] == "neutral":
+            relation["status"] = "hostile_recent_break"
+            relation["betrayal_until"] = betrayal_until
+
+        result[other] = relation
+    return result
 
 
 def _classify_troops(troops: int) -> str:
@@ -649,6 +697,11 @@ def submit_actions(
                     )
                 if my_alliance:
                     raise ValueError(f"你已与 [{my_alliance}] 联盟，请先 break")
+                # 正在交战中不能提议联盟
+                if faction_res.get("war_declared_on") == target:
+                    raise ValueError(f"正在与 [{target}] 交战，不能提议联盟。先结束战争。")
+                if faction_res.get("war_revealed_by") == target:
+                    raise ValueError(f"[{target}] 已对你宣战，不能提议联盟。")
 
             elif diplomacy_type == "alliance_accept":
                 if my_alliance:
@@ -898,6 +951,27 @@ def tick(session: Session, game_id: int):
 
             # ── declare_war: 宣战 ──────────────────────────
             elif d_type == "declare_war":
+                # 若双方当前是盟友，先自动破盟
+                if fres.get("alliance_with") == target:
+                    fres.pop("alliance_with", None)
+                    fres.pop("alliance_since", None)
+                    fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
+                    fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
+                    tres.pop("alliance_with", None)
+                    tres.pop("alliance_since", None)
+                    alliances = resources.get("_alliances", [])
+                    resources["_alliances"] = [
+                        al for al in alliances
+                        if sorted(al["factions"]) != sorted([faction, target])
+                    ]
+                    diplomacy_events.append({
+                        "tick": game.tick,
+                        "type": "alliance_broken",
+                        "by": faction,
+                        "with": target,
+                        "reason": "declared_war_breaks_alliance",
+                        "penalty": TRUST_BETRAYAL_PENALTY,
+                    })
                 fres["war_declared_on"] = target
                 fres["war_declared_at"] = game.tick
                 # 对被宣战方: 下一 tick 可看到宣战方所有城精确兵力
