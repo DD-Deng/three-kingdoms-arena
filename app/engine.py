@@ -72,9 +72,9 @@ GARRISON_MIN = 100
 MAX_RECRUIT_PER_CITY = 200
 
 # ── 防御工事系统（详见 docs/combat-rules.md §3） ─────────────
-DEFENSE_WORKS_MAX = 5           # 最大防御度                     —— §3.1
+DEFENSE_WORKS_MAX = 3           # 最大防御度 (曾 5)              —— §3.1
 DEFENSE_WORKS_PER_DEFEND = 1    # 每次 defend +1 防御度          —— §3.1
-DEFENSE_WORKS_BONUS = 0.20      # 每点防御度 +20% 防守战力       —— §3.1
+DEFENSE_WORKS_BONUS = 0.15      # 每点防御度 +15% 防守战力 (曾 20%)  —— §3.1
 
 # ── 协同进攻参数（详见 docs/combat-rules.md §4） ─────────────
 # 协同条件: 双方在同一 tick attack 同一目标 + 双方在最近 3 tick 内

@@ -18,7 +18,7 @@
 | 动作 | 成本 | 约束 |
 |------|------|------|
 | `attack` | 出兵数 × 1 粮草 | from 城必须己方、邻接 target、不能攻盟友城；出兵数 ≤ from 城兵力 - 100（留守底线） |
-| `defend` | 0 粮草 | target 必须己方城；效果：+1 防御度（上限 5），跨 tick 累积 |
+| `defend` | 0 粮草 | target 必须己方城；效果：+1 防御度（上限 3），跨 tick 累积 |
 | `recruit` | 招募数 × 2 粮草（负债惩罚期 ×3） | target 必须己方城；每城每回合 ≤ 200 |
 | `march` | 0 粮草 | from/to 必须都是己方城且邻接；出兵数 ≤ from 城兵力 - 100 |
 | `diplomacy` | 0 粮草 | target 为其他势力名；diplomacy_type 必选；message ≤ 200 字 |
@@ -43,7 +43,7 @@
 
 ```
 attack_power = 进攻方派出兵力
-defense_power = 守城兵力 × (1 + 防御度 × 0.2)
+defense_power = 守城兵力 × (1 + 防御度 × 0.15)
 ```
 
 **进攻方胜**：
@@ -90,18 +90,25 @@ defense_power = 守城兵力 × (1 + 防御度 × 0.2)
 ### §3.1 累积机制
 
 - 每次 `defend` 动作给目标城 +1 **防御度**（DEFENSE_WORKS_PER_DEFEND = 1）
-- 每城防御度上限 5（DEFENSE_WORKS_MAX = 5）
-- 每点防御度提供 +20% 防守战力加成（DEFENSE_WORKS_BONUS = 0.20）
+- 每城防御度上限 3（DEFENSE_WORKS_MAX = 3，原为 5）
+- 每点防御度提供 +15% 防守战力加成（DEFENSE_WORKS_BONUS = 0.15，原为 0.20）
 - 防御度跨 tick 累积，不受守城兵力变化影响
 
 ### §3.2 防御战力计算
 
 ```
-defense_multiplier = 1.0 + (defense_level × 0.20)
+defense_multiplier = 1.0 + (defense_level × 0.15)
 defense_power = city.troops × defense_multiplier
 ```
 
-- 连续 defend 5 回合的城 = 2.0 倍防守战力
+| 防御度 | 倍率 |
+|--------|------|
+| D0 | 1.00x |
+| D1 | 1.15x |
+| D2 | 1.30x |
+| D3 | 1.45x (上限) |
+
+- 连续 defend 3 回合的城 = 1.45 倍防守战力（原 D5=2.0x）
 
 ### §3.3 防御度重置
 

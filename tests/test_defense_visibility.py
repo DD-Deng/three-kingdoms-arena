@@ -201,3 +201,44 @@ def test_alliance_cities_defense_level_exact(monkeypatch):
         f"Ally city 邺城 should expose defense_level: {list(yecheng.keys())}"
     assert isinstance(yecheng["defense_level"], int)
     assert yecheng["defense_level"] >= 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Step 3: Nerf defense works
+# ═══════════════════════════════════════════════════════════════
+
+def test_defense_level_capped_at_3(monkeypatch):
+    """Defending 5 times should cap defense_level at 3."""
+    monkeypatch.setattr("app.config.TICK_TIMEOUT_SEC", 60)
+    setup()
+
+    shu = _join("蜀")
+    wei = _join("魏", "10.0.0.2")
+    wu = _join("吴", "10.0.0.3")
+
+    for _ in range(5):
+        _submit(shu["session_token"], actions=[{"type": "defend", "target": "成都"}])
+        _submit(wei["session_token"], actions=[{"type": "defend", "target": "洛阳"}])
+        _submit(wu["session_token"], actions=[{"type": "defend", "target": "建业"}])
+        _tick()
+
+    s = _state(shu["session_token"])
+    data = s.json()
+
+    chengdu = next((c for c in data["your_cities"] if c["name"] == "成都"), None)
+    assert chengdu is not None
+    assert chengdu["defense_level"] <= 3, f"Expected <= 3, got {chengdu['defense_level']}"
+    assert chengdu["defense_level"] == 3, f"After 5 defends, expected cap at 3, got {chengdu['defense_level']}"
+
+
+def test_defense_bonus_15_percent(monkeypatch):
+    """D3 defense should give 1.45x multiplier (not 2.0x)."""
+    monkeypatch.setattr("app.config.TICK_TIMEOUT_SEC", 60)
+    from app.engine import DEFENSE_WORKS_MAX, DEFENSE_WORKS_BONUS
+
+    assert DEFENSE_WORKS_MAX == 3, f"DEFENSE_WORKS_MAX should be 3, got {DEFENSE_WORKS_MAX}"
+    assert DEFENSE_WORKS_BONUS == 0.15, f"DEFENSE_WORKS_BONUS should be 0.15, got {DEFENSE_WORKS_BONUS}"
+
+    # D3 multiplier
+    multiplier = 1.0 + 3 * DEFENSE_WORKS_BONUS
+    assert multiplier == 1.45, f"D3 multiplier should be 1.45, got {multiplier}"

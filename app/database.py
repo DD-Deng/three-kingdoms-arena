@@ -8,6 +8,7 @@ engine = create_engine(DATABASE_URL, echo=False)
 
 def _migrate():
     """Add new columns/tables that may be missing from an existing DB."""
+    import json as _json
     with engine.connect() as conn:
         inspector = inspect(engine)
         game_cols = {c["name"] for c in inspector.get_columns("game")} if "game" in inspector.get_table_names() else set()
@@ -41,6 +42,34 @@ def _migrate():
                     conn.commit()
                 except Exception:
                     pass
+
+    # ── Data migration: clamp defense levels (v0.5 → v0.6 cap 5→3) ──
+    from sqlmodel import Session as _Session
+    with _Session(engine) as session:
+        rows = session.execute(text("SELECT id, resources FROM game WHERE resources IS NOT NULL")).fetchall()
+        clamped_count = 0
+        for row in rows:
+            game_id, raw = row
+            try:
+                resources = _json.loads(raw)
+                def_works = resources.get("_defense_works", {})
+                changed = False
+                for city_name, level in list(def_works.items()):
+                    if isinstance(level, (int, float)) and level > 3:
+                        def_works[city_name] = 3
+                        changed = True
+                if changed:
+                    resources["_defense_works"] = def_works
+                    session.execute(
+                        text("UPDATE game SET resources = :r WHERE id = :id"),
+                        {"r": _json.dumps(resources, ensure_ascii=False), "id": game_id},
+                    )
+                    clamped_count += 1
+            except Exception:
+                pass
+        if clamped_count:
+            session.commit()
+            print(f"[migrate] Clamped defense works for {clamped_count} game(s)")
 
 
 def init_db():
