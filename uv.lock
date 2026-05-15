@@ -85,7 +85,7 @@ wheels = [
 [[package]]
 name = "dayan-engine"
 version = "0.1.0"
-source = { git = "https://github.com/DD-Deng/DaYan-Engine.git#2c0f4f799efc87de42a3c01199021c26a98d34c2" }
+source = { git = "https://github.com/DD-Deng/DaYan-Engine.git#46774a7e5b40cd22ca7d691470eb4e26726ae11a" }
 
 [[package]]
 name = "deprecated"
