@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from .models import Game, Agent, City, Action, Player, RegisteredAgent
 
 # ── Dayan Engine integration ──────────────────────────────────
-_DAYAN_PATH = Path(__file__).resolve().parent.parent.parent / "DaYan Engine"
+_DAYAN_PATH = Path(__file__).resolve().parent.parent / "DaYan Engine"
 if _DAYAN_PATH.exists() and str(_DAYAN_PATH) not in sys.path:
     sys.path.insert(0, str(_DAYAN_PATH))
 
