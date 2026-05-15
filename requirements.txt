@@ -8,3 +8,4 @@ httpx>=0.27.0
 jinja2>=3.0.0
 slowapi>=0.1.9
 python-dotenv>=1.0.0
+dayan-engine @ git+https://github.com/DD-Deng/DaYan-Engine.git
