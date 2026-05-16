@@ -787,6 +787,79 @@
   align-self: flex-start;
 }
 
+/* ── Slot states: ready / countdown ─────────────────────────── */
+.slot-ready .slot-icon { color: var(--gold); }
+.slot-ready .slot-text { color: var(--ink); }
+.slot-ready { border-left: 3px solid var(--gold); padding-left: 12px; }
+
+/* countdown: pulsing gold border */
+.slot-countdown {
+  border-left: 3px solid var(--gold);
+  padding-left: 12px;
+  animation: slot-pulse 0.8s ease-in-out infinite alternate;
+}
+.slot-countdown .slot-icon { color: var(--gold); }
+.slot-countdown .slot-text { color: var(--ink); }
+.slot-countdown .ready-badge { animation: badge-pulse 0.8s ease-in-out infinite alternate; }
+
+@keyframes slot-pulse {
+  from { border-left-color: var(--gold); box-shadow: 0 0 0 transparent; }
+  to   { border-left-color: var(--gold-dim); box-shadow: 0 0 8px rgba(212,168,75,0.15); }
+}
+@keyframes badge-pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.55; }
+}
+
+/* Ready / not-ready badge */
+.ready-badge {
+  display: inline-block;
+  font-family: var(--font-mono); font-size: 10px;
+  padding: 3px 8px; letter-spacing: 1px;
+  background: rgba(212,168,75,0.1); color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  align-self: flex-start;
+}
+.ready-badge.not-ready {
+  background: rgba(201,138,58,0.08); color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Agent display name under faction leader */
+.slot-agent-name {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--ink-mute);
+  background: var(--bg);
+  padding: 2px 6px; border: 1px solid var(--line-2);
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; margin-left: auto;
+}
+
+/* Status bar extras */
+.status-countdown {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  letter-spacing: 1px;
+  animation: countdown-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes countdown-pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.5; }
+}
+.status-ready-count {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink-dim);
+}
+
+/* Countdown progress bar */
+.countdown-bar-wrap {
+  height: 4px; background: var(--line-2);
+  margin: 0 16px;
+}
+.countdown-bar-fill {
+  height: 100%; background: var(--gold);
+  transition: width 0.25s linear;
+}
+
 .card-join-btn { margin-top: auto; }
 
 /* ── Modal components ────────────────────────────────────────────── */

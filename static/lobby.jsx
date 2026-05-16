@@ -34,24 +34,41 @@ async function fetchInstruction(token) {
   } catch (e) { return null; }
 }
 
-// ── Slot card ───────────────────────────────────────────────────
-function SlotCard({ faction, slot, lang }) {
+// ── Slot card — 5 visual states ──────────────────────────────────
+function SlotCard({ faction, slot, lang, gameStatus, countdownDeadline }) {
   const f = FACTIONS[faction];
   const status = slot.status;
   const isOpen = status === 'open';
   const isOccupied = status === 'occupied';
   const isDisconnected = status === 'disconnected';
+  const isReady = slot.ready === true;
+  const isCountdown = gameStatus === 'countdown';
 
-  let statusText, statusIcon, statusClass;
+  let statusText, statusIcon, statusClass, readyBadge = null;
+
   if (isOpen) {
     statusText = lang === '中' ? '空缺 · 等待接入' : 'Open · Waiting';
-    statusIcon = '✓';
+    statusIcon = '◎';
     statusClass = 'slot-open';
   } else if (isOccupied) {
-    const online = slot.online_sec != null ? `${slot.online_sec}s` : '';
-    statusText = (lang === '中' ? '已占用' : 'Occupied') + (online ? ` · ${online}` : '');
-    statusIcon = '✗';
-    statusClass = 'slot-occupied';
+    if (isReady) {
+      statusText = lang === '中' ? '已就绪 · 等待开战' : 'Ready · Awaiting start';
+      statusIcon = '◆';
+      statusClass = 'slot-ready';
+      if (isCountdown) {
+        statusClass = 'slot-countdown';
+      }
+    } else {
+      const online = slot.online_sec != null ? `${slot.online_sec}s` : '';
+      statusText = (lang === '中' ? '已接入 · 等待就绪' : 'Joined · Awaiting ready') + (online ? ` · ${online}` : '');
+      statusIcon = '◇';
+      statusClass = 'slot-occupied';
+      readyBadge = (
+        <span className="ready-badge not-ready">
+          {lang === '中' ? '未就绪' : 'Not Ready'}
+        </span>
+      );
+    }
   } else if (isDisconnected) {
     const sec = slot.disconnected_sec || 0;
     const remain = slot.reconnect_remaining_sec || 0;
@@ -68,14 +85,113 @@ function SlotCard({ faction, slot, lang }) {
         <span className="slot-glyph">{f.glyph}</span>
         <span className="slot-name">{lang === '中' ? faction : f.en}</span>
         <span className="slot-leader">{f.leader}</span>
+        {slot.agent_display_name && (
+          <span className="slot-agent-name" title={slot.agent_display_name}>
+            {slot.agent_display_name}
+          </span>
+        )}
       </div>
       <div className="slot-status">
         <span className="slot-icon">{statusIcon}</span>
         <span className="slot-text">{statusText}</span>
       </div>
+      {readyBadge}
       {!isOpen && slot.ip && (
         <div className="slot-ip" title={slot.ip}>{slot.ip}</div>
       )}
+    </div>
+  );
+}
+
+// ── Lobby status bar component ──────────────────────────────────
+function LobbyStatusBar({ g, tick, maxTicks, lang }) {
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(iv);
+  }, []);
+
+  const status = g ? g.status : 'lobby';
+  let statusText, statusColor, statusDot;
+
+  if (status === 'finished') {
+    statusText = lang === '中' ? '已结束' : 'Finished';
+    statusColor = 'var(--accent)';
+    statusDot = '●';
+  } else if (status === 'active') {
+    statusText = lang === '中' ? '进行中' : 'LIVE';
+    statusColor = 'var(--gold)';
+    statusDot = '●';
+  } else if (status === 'paused') {
+    statusText = lang === '中' ? '已暂停' : 'Paused';
+    statusColor = 'var(--accent)';
+    statusDot = '⏸';
+  } else if (status === 'countdown') {
+    statusText = lang === '中' ? '倒计时' : 'Countdown';
+    statusColor = 'var(--gold)';
+    statusDot = '◷';
+  } else {
+    statusText = lang === '中' ? '等待玩家' : 'Lobby';
+    statusColor = 'var(--ink-dim)';
+    statusDot = '○';
+  }
+
+  // Countdown timer
+  let countdownRemain = null;
+  if (status === 'countdown' && g.countdown_deadline) {
+    const remain = Math.max(0, Math.floor((new Date(g.countdown_deadline).getTime() - now) / 1000));
+    countdownRemain = remain;
+  }
+
+  // Ready count
+  const readyCount = g && g.slots ? Object.values(g.slots).filter(s => s.ready === true).length : 0;
+  const occupiedCount = g && g.slots ? Object.values(g.slots).filter(s => s.status === 'occupied').length : 0;
+
+  return (
+    <div className="lobby-status-bar">
+      <span className="status-game">
+        Game <b>#{g ? g.game_id : '?'}</b>
+      </span>
+      <span className="status-tick">
+        Tick <b>{tick}</b> / {maxTicks}
+      </span>
+      <span className="status-live" style={{ color: statusColor }}>
+        {statusDot} {statusText}
+      </span>
+      {countdownRemain !== null && countdownRemain > 0 && (
+        <span className="status-countdown" style={{ color: 'var(--gold)' }}>
+          {countdownRemain}s
+        </span>
+      )}
+      {(status === 'lobby' || status === 'countdown') && (
+        <span className="status-ready-count">
+          ⚡ {readyCount}/{occupiedCount} {lang === '中' ? '就绪' : 'ready'}
+        </span>
+      )}
+      <span className="status-spec">
+        👁 {g ? (g.spectator_count || 0) : 0} {lang === '中' ? '观战' : 'watching'}
+      </span>
+    </div>
+  );
+}
+
+// ── Countdown progress bar ─────────────────────────────────────
+function CountdownBar({ deadline, countdownStartedAt }) {
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(iv);
+  }, []);
+
+  const totalMs = new Date(deadline).getTime() - new Date(countdownStartedAt || deadline).getTime();
+  const remainMs = Math.max(0, new Date(deadline).getTime() - now);
+  const pct = totalMs > 0 ? Math.min(100, Math.max(0, (remainMs / totalMs) * 100)) : 0;
+
+  return (
+    <div className="countdown-bar-wrap">
+      <div className="countdown-bar-fill" style={{ width: pct + '%' }} />
     </div>
   );
 }
@@ -471,22 +587,12 @@ function LobbySection({ lang }) {
       </div>
 
       {/* ── Game status bar ───────────────────────── */}
-      <div className="lobby-status-bar">
-        <span className="status-game">
-          Game <b>#{g.game_id}</b>
-        </span>
-        <span className="status-tick">
-          Tick <b>{tick}</b> / {maxTicks}
-        </span>
-        <span className="status-live" style={{ color: g.status === 'finished' ? 'var(--accent)' : 'var(--gold)' }}>
-          {g.status === 'finished' ? '● ' + (lang === '中' ? '已结束' : 'Finished')
-            : g.status === 'active' ? '● ' + (lang === '中' ? '进行中' : 'LIVE')
-            : '○ ' + (lang === '中' ? '等待中' : 'Waiting')}
-        </span>
-        <span className="status-spec">
-          👁 {g.spectator_count || 0} {lang === '中' ? '观战' : 'watching'}
-        </span>
-      </div>
+      <LobbyStatusBar g={g} tick={tick} maxTicks={maxTicks} lang={lang} />
+
+      {/* ── Countdown progress bar ────────────────── */}
+      {g && g.status === 'countdown' && g.countdown_deadline && (
+        <CountdownBar deadline={g.countdown_deadline} countdownStartedAt={g.countdown_started_at} />
+      )}
 
       {/* ── Three faction cards ───────────────────── */}
       <div className="slot-grid">
@@ -494,22 +600,32 @@ function LobbySection({ lang }) {
           const slot = slots[faction] || { status: 'open' };
           const isOpen = slot.status === 'open';
           const isDisconnected = slot.status === 'disconnected';
-          const canJoin = isOpen || isDisconnected;
+          const gameActive = g && (g.status === 'active' || g.status === 'countdown' || g.status === 'finished');
+          const canJoin = (isOpen || isDisconnected) && !gameActive;
+
+          let btnLabel;
+          if (isOpen && gameActive) {
+            btnLabel = lang === '中' ? '对局进行中' : 'Game in progress';
+          } else if (isDisconnected && gameActive) {
+            btnLabel = lang === '中' ? '已掉线 · 对局中' : 'DC · In progress';
+          } else if (isOpen) {
+            btnLabel = lang === '中' ? `扮演 ${FACTIONS[faction].leader}` : `Play as ${FACTIONS[faction].leaderEn}`;
+          } else if (isDisconnected) {
+            btnLabel = lang === '中' ? `抢占 ${FACTIONS[faction].leader}` : `Take ${FACTIONS[faction].leaderEn}`;
+          } else {
+            btnLabel = lang === '中' ? '已被占用' : 'Occupied';
+          }
 
           return (
             <div key={faction} className={'faction-card' + (canJoin ? ' card-joinable' : '')}>
-              <SlotCard faction={faction} slot={slot} lang={lang} />
+              <SlotCard faction={faction} slot={slot} lang={lang} gameStatus={g ? g.status : 'lobby'} countdownDeadline={g ? g.countdown_deadline : null} />
               <button
                 className={canJoin ? 'btn-primary card-join-btn' : 'btn-ghost card-join-btn'}
                 disabled={!canJoin}
                 onClick={() => canJoin && setJoinFaction(faction)}
                 style={{ width: '100%', marginTop: 8 }}
               >
-                {isOpen
-                  ? (lang === '中' ? `扮演 ${FACTIONS[faction].leader}` : `Play as ${FACTIONS[faction].leaderEn}`)
-                  : isDisconnected
-                  ? (lang === '中' ? `抢占 ${FACTIONS[faction].leader}` : `Take ${FACTIONS[faction].leaderEn}`)
-                  : (lang === '中' ? '已被占用' : 'Occupied')}
+                {btnLabel}
               </button>
             </div>
           );
@@ -520,6 +636,7 @@ function LobbySection({ lang }) {
       <div style={{ textAlign: 'center', marginTop: 12 }}>
         <button className="btn-ghost"
           onClick={() => setJoinFaction('spectator')}
+          disabled={g && (g.status === 'countdown' || g.status === 'active')}
           style={{ fontSize: 13 }}>
           👁 {lang === '中' ? '仅观战（不占槽位）' : 'Spectate only (no slot)'}
         </button>
