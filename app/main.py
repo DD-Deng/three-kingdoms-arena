@@ -130,6 +130,8 @@ async def value_error_handler(request: Request, exc: ValueError):
         code, status = "TACTICAL_MESSAGE_TOO_LONG", 400
     elif "招募数量" in detail and "> 0" in detail:
         code, status = "TACTICAL_INVALID_ACTION", 400
+    elif "势力已灭国" in detail:
+        code, status = "TACTICAL_FACTION_ELIMINATED", 400
     # ── Protocol ───────────────────────────────────────────
     elif "对局不存在" in detail:
         code, status = "PROTOCOL_GAME_NOT_FOUND", 404

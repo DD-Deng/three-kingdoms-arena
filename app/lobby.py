@@ -476,12 +476,17 @@ def join_slot(
     persona_hash: str | None = None,
     ua: str | None = None,
     agent_display_name: str | None = None,
+    join_new_only: bool = False,
 ) -> dict:
     """Join a faction slot. Returns session info or raises ValueError."""
     game = get_active_game(session)
 
     if faction not in FACTION_POOL and faction != "spectator":
         raise ValueError(f"无效势力: {faction}")
+
+    # ── join_new_only guard ──────────────────────────────────
+    if join_new_only and faction != "spectator" and game.status not in ("lobby", "countdown", None):
+        raise ValueError("对局已开始，无法加入——请等待下一局")
 
     # ── Spectator join ──────────────────────────────────────
     if faction == "spectator":
@@ -740,6 +745,21 @@ def update_heartbeat(session: Session, token: str):
             slot.last_heartbeat_at = now
             if slot.status == "disconnected":
                 slot.status = "occupied"
+                # ── Safety: deactivate any lingering managed AI ─
+                from .models import Agent as AgentModel
+                managed = session.exec(
+                    select(AgentModel).where(
+                        AgentModel.game_id == sess.game_id,
+                        AgentModel.faction == sess.faction,
+                        AgentModel.agent_mode == "managed",
+                        AgentModel.is_active == True,
+                    )
+                ).all()
+                for m in managed:
+                    m.is_active = False
+                    m.deactivated_at = now
+                    m.deactivated_reason = "replaced_by_player"
+                    session.add(m)
             session.add(slot)
 
     session.commit()
@@ -796,6 +816,34 @@ def reconnect_session(session: Session, token: str) -> dict:
     sess.status = "active"
     sess.heartbeat_at = now
     session.add(sess)
+
+    # ── Safety: deactivate any lingering managed AI for this faction ─
+    from .models import Agent as AgentModel
+    managed = session.exec(
+        select(AgentModel).where(
+            AgentModel.game_id == sess.game_id,
+            AgentModel.faction == sess.faction,
+            AgentModel.agent_mode == "managed",
+            AgentModel.is_active == True,
+        )
+    ).all()
+    for m in managed:
+        m.is_active = False
+        m.deactivated_at = now
+        m.deactivated_reason = "replaced_by_player"
+        session.add(m)
+        # Delete managed AI's submitted actions for current tick
+        game = session.get(Game, sess.game_id)
+        if game:
+            ma = session.exec(
+                select(eng.Action).where(
+                    eng.Action.game_id == sess.game_id,
+                    eng.Action.agent_id == m.id,
+                    eng.Action.tick == game.tick,
+                )
+            ).all()
+            for act in ma:
+                session.delete(act)
 
     session.commit()
 

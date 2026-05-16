@@ -36,6 +36,8 @@ _ERROR_DEFS: dict[str, tuple[ErrorCategory, bool]] = {
     "TACTICAL_NOT_ALLIED":            (ErrorCategory.tactical, True),
     "TACTICAL_NO_PENDING_ALLIANCE":   (ErrorCategory.tactical, True),
     "TACTICAL_ACTIONS_EMPTY":         (ErrorCategory.tactical, True),
+    "TACTICAL_NO_VALID_ACTIONS":      (ErrorCategory.tactical, False),
+    "TACTICAL_FACTION_ELIMINATED":    (ErrorCategory.tactical, False),
     "TACTICAL_RECRUIT_EXCEEDS_MAX":   (ErrorCategory.tactical, True),
     "TACTICAL_MESSAGE_TOO_LONG":      (ErrorCategory.tactical, True),
     "TACTICAL_RENEW_TOO_EARLY":       (ErrorCategory.tactical, True),

@@ -364,6 +364,17 @@ def get_state(session: Session, game_id: int, agent: Agent):
         if game.tick - e.get("tick", 0) <= 5
     ]
 
+    # ── Fog of War: filter combat_report ────────────────────
+    your_side = {your_faction}
+    if your_alliance_with:
+        your_side.add(your_alliance_with)
+    for ev in public_events:
+        if "combat_report" not in ev:
+            continue
+        involved = set(ev.get("attackers", [])) | {ev.get("defender")}
+        if not (your_side & involved):
+            ev.pop("combat_report", None)
+
     # ── 宣战信息: 是否有人对你宣战 ────────────────────────
     war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
 
@@ -421,6 +432,18 @@ def get_state(session: Session, game_id: int, agent: Agent):
     game_paused = game.status == "paused"
     paused_reason = "没有玩家在线" if game_paused else None
 
+    # ── Managed AI conflict detection ─────────────────────────
+    managed_ai_active = any(
+        a.agent_mode == "managed" and a.faction == your_faction and a.id != agent.id
+        for a in agents
+    )
+    faction_eliminated = len(own_names) == 0 and game.status in ("active", "paused")
+
+    # ── Idle penalty status ────────────────────────────────────
+    from .config import IDLE_PENALTY_THRESHOLD as _idle_threshold
+    idle_ticks = resources_raw.get(your_faction, {}).get("_idle_ticks", 0)
+    idle_penalty_active = idle_ticks > _idle_threshold and not faction_eliminated
+
     return {
         "tick": game.tick,
         "status": game.status,
@@ -451,6 +474,10 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "paused_reason": paused_reason,
         "your_token_expires_at": your_token_expires_at,
         "your_token_expires_in_sec": your_token_expires_in_sec,
+        "managed_ai_active": managed_ai_active,
+        "faction_eliminated": faction_eliminated,
+        "idle_ticks": idle_ticks,
+        "idle_penalty_active": idle_penalty_active,
     }
 
 
@@ -621,6 +648,14 @@ def submit_actions(
 
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
     city_map = {c.name: c for c in cities}
+
+    # ── Eliminated faction guard ──────────────────────────────
+    own_cities = [c for c in cities if c.owner == agent.faction]
+    if not own_cities:
+        non_diplo = [a for a in actions if a.get("type") != "diplomacy"]
+        if non_diplo:
+            raise ValueError("势力已灭国，无城可战——仅可发起外交动作")
+
     resources = json.loads(game.resources) if game.resources else {}
     faction_res = resources.get(agent.faction, {"grain": INITIAL_GRAIN.get(agent.faction, 500), "debt": 0})
     grain = faction_res.get("grain", 0)
@@ -1004,6 +1039,7 @@ def tick(session: Session, game_id: int):
 
             # ── alliance_break: 破盟 ───────────────────────
             elif d_type == "alliance_break":
+                from .config import REFLECTION_TICKS
                 ally = fres.get("alliance_with")
                 if ally == target:
                     fres.pop("alliance_with", None)
@@ -1011,6 +1047,7 @@ def tick(session: Session, game_id: int):
                     fres.pop("alliance_expires_at", None)
                     fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
                     fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
+                    fres["reflection_until"] = game.tick + REFLECTION_TICKS
                     # 对方也解除
                     tres.pop("alliance_with", None)
                     tres.pop("alliance_since", None)
@@ -1050,6 +1087,7 @@ def tick(session: Session, game_id: int):
 
             # ── declare_war: 宣战 ──────────────────────────
             elif d_type == "declare_war":
+                from .config import REFLECTION_TICKS
                 # 若双方当前是盟友，先自动破盟
                 if fres.get("alliance_with") == target:
                     fres.pop("alliance_with", None)
@@ -1057,6 +1095,7 @@ def tick(session: Session, game_id: int):
                     fres.pop("alliance_expires_at", None)
                     fres["betrayal_until"] = game.tick + BETRAYAL_COOLDOWN
                     fres["trust_score"] = max(0, fres.get("trust_score", TRUST_INITIAL) + TRUST_BETRAYAL_PENALTY)
+                    fres["reflection_until"] = game.tick + REFLECTION_TICKS
                     tres.pop("alliance_with", None)
                     tres.pop("alliance_since", None)
                     tres.pop("alliance_expires_at", None)
@@ -1101,15 +1140,21 @@ def tick(session: Session, game_id: int):
             # ── message: 纯文本 ────────────────────────────
             # 无额外处理，仅记录在上方 diplomacy_messages 中
 
-    # ── 信任恢复: 每 tick +5（7 tick 未背叛的势力） ──────
+    # ── 信任恢复 ──────────────────────────────────────────
+    from .config import REFLECTION_TICKS as _refl_ticks, REFLECTION_TRUST_PER_TICK as _refl_per_tick
     for f in FACTION_POOL:
         fres = resources.get(f, {})
         if not fres.get("alliance_with"):
             betrayal_until = fres.get("betrayal_until", 0)
-            if game.tick >= betrayal_until:
-                current = fres.get("trust_score", TRUST_INITIAL)
-                if current < TRUST_INITIAL:
-                    fres["trust_score"] = min(TRUST_INITIAL, current + TRUST_RECOVERY_PER_TICK)
+            reflection_until = fres.get("reflection_until", 0)
+            break_tick = betrayal_until - BETRAYAL_COOLDOWN
+            current = fres.get("trust_score", TRUST_INITIAL)
+            # Reflection recovery: from tick after break, +3/tick during reflection
+            if game.tick > break_tick and game.tick < reflection_until and current < TRUST_INITIAL:
+                fres["trust_score"] = min(TRUST_INITIAL, current + _refl_per_tick)
+            # Normal recovery: after betrayal cooldown, +5/tick
+            elif game.tick >= betrayal_until and current < TRUST_INITIAL:
+                fres["trust_score"] = min(TRUST_INITIAL, current + TRUST_RECOVERY_PER_TICK)
 
     # ── 2. 按城池分组，结算战斗 ────────────────────────────
     combat_actions = [a for a in actions if a.type in ("attack", "defend")]
@@ -1223,7 +1268,11 @@ def tick(session: Session, game_id: int):
         attacker_wins = (dayan_result.winner == "attacker")
 
         # Public event summary
-        public_event: dict = {"city": city_name}
+        public_event: dict = {
+            "city": city_name,
+            "attackers": list(faction_attack.keys()),
+            "defender": city.owner or "中立",
+        }
 
         # Detailed combat data (for private_log)
         detail: dict = {
@@ -1271,6 +1320,23 @@ def tick(session: Session, game_id: int):
             detail["new_owner"] = winner_faction
             detail["troops_remaining"] = new_troops
             detail["troop_losses"] = troop_losses
+
+            # ── combat_report (for agent observability) ──────
+            total_committed = sum(faction_attack.values())
+            attacker_losses_abs = sum(
+                committed - troop_losses.get(f, 0)
+                for f, committed in faction_attack.items()
+            )
+            public_event["combat_report"] = {
+                "attacker_troops_committed": total_committed,
+                "attacker_casualty_pct": round(dayan_result.total_casualties_attacker, 3),
+                "attacker_losses": attacker_losses_abs,
+                "defender_troops": city.troops,
+                "defender_defense_level": defense_level,
+                "defender_casualty_pct": 1.0,
+                "defender_losses": city.troops,
+                "outcome": "captured",
+            }
         else:
             # ── Defender wins ──────────────────────────────
             def_loss_pct = dayan_result.total_casualties_defender
@@ -1298,6 +1364,41 @@ def tick(session: Session, game_id: int):
                 loss = math.ceil(committed * atk_loss_pct)
                 attacker_losses[faction] = max(committed - loss, 0)
             detail["attackers_remaining"] = attacker_losses
+
+            # ── combat_report (for agent observability) ──────
+            total_committed = sum(faction_attack.values())
+            attacker_losses_abs = sum(
+                committed - attacker_losses.get(f, 0)
+                for f, committed in faction_attack.items()
+            )
+            def_losses_abs = city.troops - new_troops
+            public_event["combat_report"] = {
+                "attacker_troops_committed": total_committed,
+                "attacker_casualty_pct": round(dayan_result.total_casualties_attacker, 3),
+                "attacker_losses": attacker_losses_abs,
+                "defender_troops": city.troops,
+                "defender_defense_level": defense_level,
+                "defender_casualty_pct": round(dayan_result.total_casualties_defender, 3),
+                "defender_losses": def_losses_abs,
+                "outcome": "defended",
+            }
+
+        # ── Prepend factual deployment summary to narrative ─
+        cr = public_event.get("combat_report", {})
+        if cr and dayan_narrative:
+            atk_name = config.attacker_name
+            atk_troops = cr.get("attacker_troops_committed", 0)
+            def_troops = cr.get("defender_troops", 0)
+            def_level = cr.get("defender_defense_level", 0)
+            atk_losses = cr.get("attacker_losses", 0)
+            def_losses = cr.get("defender_losses", 0)
+            outcome_cn = "攻占" if cr.get("outcome") == "captured" else "守住"
+            factual = (
+                f"【战报实录】{atk_name}率{atk_troops}兵攻{city_name}，"
+                f"{city_name}守军{def_troops}，城防Lv{def_level}。"
+                f"攻方折损{atk_losses}人，守方折损{def_losses}人，结果：{outcome_cn}。"
+            )
+            dayan_narrative = factual + "\n\n" + dayan_narrative
 
         # ── Attach Dayan Engine hexagram data ───────────────
         if dayan_result:
@@ -1355,6 +1456,23 @@ def tick(session: Session, game_id: int):
             if faction not in resources:
                 resources[faction] = {}
             resources[faction]["eliminated_at"] = now_iso
+
+    # ── 蹲家惩罚追踪：只有 attack 重置计数器 ──────────────
+    from .config import IDLE_PENALTY_THRESHOLD, IDLE_PENALTY_RATIO
+    attackers_this_tick: set[str] = set()
+    for a in actions:
+        if a.type == "attack":
+            ag = agent_map.get(a.agent_id)
+            if ag:
+                attackers_this_tick.add(ag.faction)
+    for faction in FACTION_POOL:
+        if faction not in resources:
+            resources[faction] = {}
+        prev = resources[faction].get("_idle_ticks", 0)
+        if faction in attackers_this_tick:
+            resources[faction]["_idle_ticks"] = 0
+        else:
+            resources[faction]["_idle_ticks"] = prev + 1
 
     # ── 3. 招募（战斗后） ─────────────────────────────────
     recruit_actions = [a for a in actions if a.type == "recruit"]
@@ -1417,6 +1535,24 @@ def tick(session: Session, game_id: int):
                 multiplier = 1 + ECONOMIC_CATCHUP_PER_CITY_BEHIND * (avg - owned_count)
                 base_income = round(base_income * multiplier)
         resources[faction]["grain"] += base_income
+
+        # ── 蹲家惩罚：连续 N tick 不攻击则额外耗粮 ──────────
+        idle_ticks = resources[faction].get("_idle_ticks", 0)
+        if idle_ticks > IDLE_PENALTY_THRESHOLD and owned_count > 0:
+            total_troops = sum(
+                c.troops for c in updated_cities if c.owner == faction
+            )
+            extra_upkeep = math.ceil(total_troops * IDLE_PENALTY_RATIO)
+            resources[faction]["grain"] -= extra_upkeep
+            if extra_upkeep > 0:
+                private_combat_detail.append({
+                    "event_type": "idle_penalty",
+                    "faction": faction,
+                    "idle_ticks": idle_ticks,
+                    "total_troops": total_troops,
+                    "extra_upkeep": extra_upkeep,
+                })
+
         # 清除负债标记：若粮草回正，清除惩罚和债务记录
         if resources[faction]["grain"] >= 0 and resources[faction].get("recruit_penalty"):
             del resources[faction]["recruit_penalty"]

@@ -955,10 +955,10 @@ def test_low_trust_alliance_rejected():
     ])
     _tick(gid)
 
-    # 第二次背信，信任 < 60
+    # 第二次背信，信任 < 70（反思期恢复 +3/tick 后仍低于单次破盟惩罚起点）
     r = client.get(f"/games/{gid}/state", params={"token": token_shu})
     trust = r.json()["your_trust_score"]
-    assert trust < 60, f"预期信任 < 60（两次背信 + 少量恢复），实际 {trust}"
+    assert trust < 70, f"预期信任 < 70（两次背信 + 反思恢复），实际 {trust}"
 
     # 背信冷却中，无法提议
     r = _submit(token_shu, gid, [

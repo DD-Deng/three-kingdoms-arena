@@ -154,7 +154,36 @@ defense_power = city.troops × defense_multiplier
 
 ---
 
-## §6 胜利条件
+## §6A 蹲家惩罚（消极游戏负反馈）
+
+> 设计意图：鼓励主动博弈，惩罚"屯兵不打等收割"的搭便车策略。只有进攻行为重置计数器。
+
+### §6A.1 触发机制
+
+- 每个势力追踪 `_idle_ticks`：**连续未发起 `attack` 动作的 tick 数**
+- 阈值：`IDLE_PENALTY_THRESHOLD = 8`（可配置）
+- 任何一次 `attack` 动作（无论胜负）**立即重置**计数为 0
+- `defend` / `recruit` / `march` / `diplomacy` **不算积极行为**，不重置计数
+
+### §6A.2 惩罚
+
+- 触发条件：`_idle_ticks > IDLE_PENALTY_THRESHOLD` 且势力仍有城池（即从第 N+1 tick 起）
+- 惩罚：从第 N+1 tick 起，该势力**所有城池**额外消耗粮草：
+  ```
+  extra_upkeep = ⌈total_troops × IDLE_PENALTY_RATIO⌉
+  ```
+- `IDLE_PENALTY_RATIO = 0.15`（15%，可配置）
+- 该消耗在粮草产出之后扣除，不计入负债
+
+### §6A.3 状态可见性
+
+- state API 返回 `idle_ticks: int` — 当前连续未攻击 tick 数
+- state API 返回 `idle_penalty_active: bool` — 是否已触发惩罚
+- agent 可在快到阈值前主动进攻以避免惩罚
+
+---
+
+## §7 胜利条件
 
 - 所有有主城池归于同一势力时，该势力获胜
 - 若达到 tick 上限未分胜负，城池多者胜（兵力总和为 tie-breaker）

@@ -57,11 +57,15 @@ def test_rate_limit():
 
 
 def test_tactical_errors_are_retry_safe():
-    """All tactical errors should be retry_safe."""
+    """All tactical errors should be retry_safe except permanently blocked states."""
     from app.exceptions import _ERROR_DEFS
+    NON_RETRYABLE_TACTICAL = {"TACTICAL_FACTION_ELIMINATED", "TACTICAL_NO_VALID_ACTIONS"}
     for code, (cat, retry) in _ERROR_DEFS.items():
         if cat == ErrorCategory.tactical:
-            assert retry is True, f"{code} should be retry_safe"
+            if code in NON_RETRYABLE_TACTICAL:
+                assert retry is False, f"{code} should NOT be retry_safe (permanent state)"
+            else:
+                assert retry is True, f"{code} should be retry_safe"
 
 
 # ═══════════════════════════════════════════════════════════════

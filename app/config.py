@@ -62,3 +62,20 @@ MANAGED_AI_RECRUIT_RATIO: float = float(os.environ.get("MANAGED_AI_RECRUIT_RATIO
 
 # Countdown: seconds from all-3-ready to game start.
 COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
+
+# ── Idle penalty (蹲家惩罚) ─────────────────────────────────────
+# Factions that don't attack for N consecutive ticks incur extra grain upkeep
+# on all cities.  Only `attack` actions reset the counter — defend/recruit/march/
+# diplomacy do NOT count as active behaviour.  Designed to punish passive play
+# and encourage active engagement.
+IDLE_PENALTY_THRESHOLD: int = int(os.environ.get("IDLE_PENALTY_THRESHOLD", "8"))
+IDLE_PENALTY_RATIO: float = float(os.environ.get("IDLE_PENALTY_RATIO", "0.15"))
+
+# ── Diplomacy: post-betrayal trust recovery ─────────────────────
+# After alliance_break (or declare_war that breaks an alliance), the betraying
+# faction enters a 5-tick "reflection period".  Each tick during the period they
+# recover REFLECTION_TRUST_PER_TICK trust points, up to TRUST_REJECT_THRESHOLD
+# (50) or TRUST_INITIAL (100).  Normal trust recovery takes over after the period.
+# This prevents "one betrayal = permanent diplomatic death".
+REFLECTION_TICKS: int = int(os.environ.get("REFLECTION_TICKS", "5"))
+REFLECTION_TRUST_PER_TICK: int = int(os.environ.get("REFLECTION_TRUST_PER_TICK", "3"))

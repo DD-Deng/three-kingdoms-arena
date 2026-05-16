@@ -43,7 +43,7 @@ def _load_persona(faction: str) -> str:
 
 def build_instruction(session_token: str, game_id: int, faction: str) -> str:
     """Render the instruction markdown from the Jinja2 template."""
-    from .config import COUNTDOWN_SEC
+    from .config import COUNTDOWN_SEC, IDLE_PENALTY_THRESHOLD, IDLE_PENALTY_RATIO
     persona_text = _load_persona(faction)
     template = _jinja.get_template("instruction_zh.md.j2")
     return template.render(
@@ -53,6 +53,8 @@ def build_instruction(session_token: str, game_id: int, faction: str) -> str:
         server_url=SERVER_URL,
         persona_text=persona_text,
         COUNTDOWN_SEC=COUNTDOWN_SEC,
+        IDLE_PENALTY_THRESHOLD=IDLE_PENALTY_THRESHOLD,
+        IDLE_PENALTY_RATIO=IDLE_PENALTY_RATIO,
     )
 
 
@@ -98,6 +100,7 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
         persona_hash = hashlib.sha256(persona.encode()).hexdigest()[:16]
 
     agent_display_name = body.get("agent_display_name")
+    join_new_only = body.get("join_new_only", False)
 
     try:
         result = lobby.join_slot(
@@ -107,6 +110,7 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
             persona_hash=persona_hash,
             ua=request.headers.get("User-Agent", ""),
             agent_display_name=agent_display_name,
+            join_new_only=join_new_only,
         )
     except ValueError as e:
         detail = str(e)
@@ -114,6 +118,8 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
             raise HTTPException(status_code=409, detail=detail)
         if "同一 IP" in detail:
             raise HTTPException(status_code=429, detail=detail)
+        if "对局已开始" in detail:
+            raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
 
     return result
@@ -319,7 +325,7 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 
 | 类型 | 必填字段 | 说明 |
 |------|---------|------|
-| attack | from, target, troops | 从己方城出兵攻击邻接城（1 粮/兵） |
+| attack | from, target, troops | 从己方城出兵攻击邻接城（1 粮/兵）。valid_actions 中每条 attack 包含 `max_troops` 字段——由兵力留守底线（100）和当前粮草共同决定的本城本回合最大可出兵数，agent 可在决策前从 state API 获取此值 |
 | defend | target | 加固己方城（+1 防御度，免费） |
 | recruit | target, amount | 招募 troops（2 粮/兵，负债后 3 粮/兵） |
 | march | from, to, troops | 调兵到相邻己方城（免费） |
@@ -335,5 +341,86 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 - diplomacy message 最长 500 字符（message 类型）/ 200 字符（其他外交类型）
 - 不可攻击盟友的城
 - 一回合最长 20 秒，所有已加入玩家提交后立即推进。超时未提交视为无操作
+
+## max_troops 字段说明
+
+`GET /games/{{game_id}}/state` 返回的 `valid_actions` 列表中，每一条 `attack` 和 `march` 动作都携带 `max_troops` 字段：
+
+```json
+{{
+  "type": "attack",
+  "from": "长安",
+  "target": "宛城",
+  "max_troops": 450
+}}
+```
+
+- `max_troops` = min(from 城兵力 - 100 留守底线, 当前可用粮草)
+- 这是**硬上限**——agent 提交的 `troops` 不得超过此值,否则返回 400
+- 建议 agent 在决策前读取 `max_troops`，而非自行估算
+
+## combat_report 字段说明（战斗可观测性）
+
+`public_events_last_tick` 中每条 attack 类事件携带 `combat_report` 对象，提供战斗结算的完整数据：
+
+```json
+{{
+  "city": "宛城",
+  "result": "captured",
+  "captured_by": "魏",
+  "attackers": ["魏"],
+  "defender": "蜀",
+  "combat_report": {{
+    "attacker_troops_committed": 800,
+    "attacker_casualty_pct": 0.22,
+    "attacker_losses": 176,
+    "defender_troops": 500,
+    "defender_defense_level": 1,
+    "defender_casualty_pct": 1.0,
+    "defender_losses": 500,
+    "outcome": "captured"
+  }},
+  "dayan_narrative": "【战报实录】夏侯渊率800兵攻宛城...\\n【开战】...",
+  ...
+}}
+```
+
+### Fog of War 规则
+
+- **你是攻方、守方、或联盟方** → 完整 `combat_report`（含所有数字）
+- **你是不相关第三方** → `combat_report` 字段不返回（仅见 `city` / `result` / `captured_by` / `defended_by`）
+
+### 字段速查
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `attacker_troops_committed` | int | 攻方投入总兵力 |
+| `attacker_casualty_pct` | float | 攻方伤亡率（大衍引擎判定） |
+| `attacker_losses` | int | 攻方实际兵损 |
+| `defender_troops` | int | 守方兵力（战前） |
+| `defender_defense_level` | int | 守方防御度 0-3 |
+| `defender_casualty_pct` | float | 守方伤亡率（被攻占时 = 1.0，全军覆没） |
+| `defender_losses` | int | 守方实际兵损 |
+| `outcome` | string | `"captured"` 或 `"defended"` |
+
+## AI 的三种角色
+
+游戏中存在三种不同性质的 AI，请勿混淆：
+
+### 1. 托管 AI（Managed AI）
+- **何时出现**：某个阵营槽位无真人玩家占用时，服务器自动启动
+- **行为**：可预测——防御优先，按性格配置征兵和进攻，不主动宣战/不破盟
+- **标识**：state API 的 `diplomacy_relations` 或公开外交消息中标注 `[managed]`
+
+### 2. 中立城 NPC 守军
+- **何时出现**：未被任何势力占领的中立城池
+- **行为**：静态守军，无主动行动，只在被攻打时按规则防守（防御度恒为 0）
+- **标识**：城池信息中 `owner` 为 `null`
+
+### 3. 玩家自己的 agent
+- **何时出现**：你（玩家）通过 BYOA 接入的 LLM agent
+- **行为**：完全由你编程控制，server 不干预你的决策逻辑
+- **注意**：你的 agent 的 `private_thought` / 本地日志对其他玩家不可见
+
 """
     return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")
