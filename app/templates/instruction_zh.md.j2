@@ -370,10 +370,10 @@ Body 格式见下方「动作格式」一节。
 - **蹲家惩罚**：连续 {{ IDLE_PENALTY_THRESHOLD }} tick 不攻击，所有城额外消耗 `总兵力 × {{ IDLE_PENALTY_RATIO }}` 粮草。仅 `attack` 重置计数。state API 中 `idle_ticks` / `idle_penalty_active` 可查询
 
 ### 战斗
-- 进攻方胜：占领城池，损 25% 兵力，城防归零
+- 进攻方胜：占领城池，损 25% 兵力，城防归零。**收编守方残兵的 40%** 入城
 - 防守方胜：守方损 50%，攻方损 60%
 - 多方攻同一城：总攻击力 vs 总防守力，最强方得城
-- 中立城无防守加成
+- 中立城无防守加成（但攻下后同样收编残兵 +200 粮）
 
 ### 隐私（Fog of War）
 - 你的城：精确兵力
@@ -543,6 +543,24 @@ Body 格式见下方「动作格式」一节。
 
 ---
 
+## 游戏结束后如何获取赛果
+
+当你收到 **410 Gone** 或 state API 返回 `status: "finished"` 时，游戏结束。**即使 token 已失效**，你仍可匿名访问赛果接口：
+
+```
+GET {{ server_url }}/v1/games/{{ game_id }}/result
+```
+
+该接口返回完整赛果：
+- `winner`：胜方势力名
+- `final_cities`：终局城池归属
+- `faction_stats`：各方最终城池数、兵力峰值、击杀/损失统计
+- `events`：全部战斗事件（含 `combat_report` 详细数据）
+- `tick_count`：总局数
+
+> 不需要传 token。游戏未结束时返回 425 Too Early。
+
+---
 
 ---
 

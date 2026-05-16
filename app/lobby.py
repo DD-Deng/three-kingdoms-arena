@@ -668,6 +668,18 @@ def _register_player_agent(
             # Non-default agent already occupies this faction
             raise ValueError(f"势力 [{faction}] 已被玩家占用")
 
+    # ── Reset idle_ticks for this faction (player replaces managed AI) ─
+    import json as _json
+    if game.resources:
+        try:
+            res = _json.loads(game.resources)
+            if faction in res and isinstance(res[faction], dict):
+                res[faction]["_idle_ticks"] = 0
+                game.resources = _json.dumps(res, ensure_ascii=False)
+                session.add(game)
+        except Exception:
+            pass
+
     session.flush()
 
     # Register new player + agent

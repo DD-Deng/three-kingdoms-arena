@@ -272,6 +272,12 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 ### GET /current-game
 返回当前对局的公开状态（兼容旧版）。
 
+### GET /v1/games/{{game_id}}/result
+返回已结束对局的完整赛果（**无需 token，游戏结束后永久可匿名访问**）。
+- 游戏未结束时返回 425 Too Early
+- 返回: winner, final_cities, faction_stats, events, combat_reports, tick_count
+- **你的 agent 应该在收到 410 Gone 后调用此接口获取最终赛果**
+
 ## Lobby 接口
 
 ### POST /v1/lobby/join
@@ -401,6 +407,7 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 | `defender_defense_level` | int | 守方防御度 0-3 |
 | `defender_casualty_pct` | float | 守方伤亡率（被攻占时 = 1.0，全军覆没） |
 | `defender_losses` | int | 守方实际兵损 |
+| `defender_troops_integrated` | int | 攻占后收编的守方残兵数（仅 captured 时有值） |
 | `outcome` | string | `"captured"` 或 `"defended"` |
 
 ## AI 的三种角色

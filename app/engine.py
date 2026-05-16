@@ -158,6 +158,7 @@ def create_game(session: Session) -> int:
             "grain": INITIAL_GRAIN.get(f, 500),
             "debt": 0,
             "trust_score": TRUST_INITIAL,
+            "_idle_ticks": 0,
         }
         for f in FACTION_POOL
     }
@@ -443,6 +444,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
     from .config import IDLE_PENALTY_THRESHOLD as _idle_threshold
     idle_ticks = resources_raw.get(your_faction, {}).get("_idle_ticks", 0)
     idle_penalty_active = idle_ticks > _idle_threshold and not faction_eliminated
+    idle_penalty_suppressed_reason = resources_raw.get(your_faction, {}).get("_idle_suppressed")
 
     return {
         "tick": game.tick,
@@ -478,6 +480,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "faction_eliminated": faction_eliminated,
         "idle_ticks": idle_ticks,
         "idle_penalty_active": idle_penalty_active,
+        "idle_penalty_suppressed_reason": idle_penalty_suppressed_reason,
     }
 
 
@@ -692,7 +695,13 @@ def submit_actions(
                 raise ValueError(
                     f"不能攻击盟友 [{my_alliance}] 的城 [{target}]，请先 alliance_break"
                 )
-            total_grain_cost += troops * 1
+            # Soft exit: idle factions get discounted attack cost
+            from .config import IDLE_SOFT_EXIT_THRESHOLD, IDLE_SOFT_EXIT_ATTACK_COST_RATIO
+            attack_cost_per_troop = 1.0
+            idle = faction_res.get("_idle_ticks", 0)
+            if idle >= IDLE_SOFT_EXIT_THRESHOLD:
+                attack_cost_per_troop = IDLE_SOFT_EXIT_ATTACK_COST_RATIO
+            total_grain_cost += math.ceil(troops * attack_cost_per_troop)
 
         elif action_type == "defend":
             target = act["target"]
@@ -1306,7 +1315,15 @@ def tick(session: Session, game_id: int):
                 remaining = committed - loss
                 troop_losses[faction] = max(remaining, 0)
 
-            new_troops = max(troop_losses[winner_faction], GARRISON_MIN)
+            # ── Capture integration: 收编残兵 ──────────────
+            from .config import CAPTURE_INTEGRATION_RATIO
+            def_casualty_pct = dayan_result.total_casualties_defender
+            defender_losses_abs = math.ceil(city.troops * def_casualty_pct)
+            defender_survivors = max(0, city.troops - defender_losses_abs)
+            integrated = math.ceil(defender_survivors * CAPTURE_INTEGRATION_RATIO)
+
+            winner_remaining = max(troop_losses[winner_faction], GARRISON_MIN)
+            new_troops = winner_remaining + integrated
             combat_changes[city_name] = (winner_faction, new_troops)
 
             # City captured → reset defense works
@@ -1320,6 +1337,7 @@ def tick(session: Session, game_id: int):
             detail["new_owner"] = winner_faction
             detail["troops_remaining"] = new_troops
             detail["troop_losses"] = troop_losses
+            detail["defender_integrated"] = integrated
 
             # ── combat_report (for agent observability) ──────
             total_committed = sum(faction_attack.values())
@@ -1333,8 +1351,9 @@ def tick(session: Session, game_id: int):
                 "attacker_losses": attacker_losses_abs,
                 "defender_troops": city.troops,
                 "defender_defense_level": defense_level,
-                "defender_casualty_pct": 1.0,
-                "defender_losses": city.troops,
+                "defender_casualty_pct": round(def_casualty_pct, 3),
+                "defender_losses": defender_losses_abs,
+                "defender_troops_integrated": integrated,
                 "outcome": "captured",
             }
         else:
@@ -1393,11 +1412,16 @@ def tick(session: Session, game_id: int):
             atk_losses = cr.get("attacker_losses", 0)
             def_losses = cr.get("defender_losses", 0)
             outcome_cn = "攻占" if cr.get("outcome") == "captured" else "守住"
+            integrated = cr.get("defender_troops_integrated", 0)
             factual = (
                 f"【战报实录】{atk_name}率{atk_troops}兵攻{city_name}，"
                 f"{city_name}守军{def_troops}，城防Lv{def_level}。"
                 f"攻方折损{atk_losses}人，守方折损{def_losses}人，结果：{outcome_cn}。"
             )
+            if integrated > 0:
+                factual += (
+                    f"收编降卒{integrated}人，归于{config.attacker_name}麾下，以充守备。"
+                )
             dayan_narrative = factual + "\n\n" + dayan_narrative
 
         # ── Attach Dayan Engine hexagram data ───────────────
@@ -1539,19 +1563,27 @@ def tick(session: Session, game_id: int):
         # ── 蹲家惩罚：连续 N tick 不攻击则额外耗粮 ──────────
         idle_ticks = resources[faction].get("_idle_ticks", 0)
         if idle_ticks > IDLE_PENALTY_THRESHOLD and owned_count > 0:
-            total_troops = sum(
-                c.troops for c in updated_cities if c.owner == faction
-            )
-            extra_upkeep = math.ceil(total_troops * IDLE_PENALTY_RATIO)
-            resources[faction]["grain"] -= extra_upkeep
-            if extra_upkeep > 0:
-                private_combat_detail.append({
-                    "event_type": "idle_penalty",
-                    "faction": faction,
-                    "idle_ticks": idle_ticks,
-                    "total_troops": total_troops,
-                    "extra_upkeep": extra_upkeep,
-                })
+            current_grain = resources[faction].get("grain", 0)
+            if current_grain < 0:
+                # Suppressed: grain already negative, don't pile on
+                resources[faction]["_idle_suppressed"] = "negative_grain"
+            else:
+                total_troops = sum(
+                    c.troops for c in updated_cities if c.owner == faction
+                )
+                extra_upkeep = math.ceil(total_troops * IDLE_PENALTY_RATIO)
+                resources[faction]["grain"] -= extra_upkeep
+                resources[faction].pop("_idle_suppressed", None)
+                if extra_upkeep > 0:
+                    private_combat_detail.append({
+                        "event_type": "idle_penalty",
+                        "faction": faction,
+                        "idle_ticks": idle_ticks,
+                        "total_troops": total_troops,
+                        "extra_upkeep": extra_upkeep,
+                    })
+        else:
+            resources[faction].pop("_idle_suppressed", None)
 
         # 清除负债标记：若粮草回正，清除惩罚和债务记录
         if resources[faction]["grain"] >= 0 and resources[faction].get("recruit_penalty"):
@@ -2326,6 +2358,42 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
                     "message": "善",
                 })
 
+        # 3b. Forced attack: every N ticks, must attack weakest reachable target
+        from .config import MANAGED_AI_FORCED_ATTACK_INTERVAL
+        idle_ticks = your_resources.get("_idle_ticks", 0)
+        if idle_ticks >= MANAGED_AI_FORCED_ATTACK_INTERVAL and your_cities:
+            # Find weakest reachable enemy/neutral city
+            best_target = None
+            best_troops = 999999
+            best_from = None
+            for my_city in your_cities:
+                if my_city["troops"] <= 200:
+                    continue
+                for neighbor_name in my_city.get("neighbors", []):
+                    neighbor = next((c for c in known_cities if c["name"] == neighbor_name), None)
+                    if neighbor is None:
+                        continue
+                    owner = neighbor.get("owner", "中立")
+                    if owner == agent.faction:
+                        continue
+                    if your_ally and owner == your_ally:
+                        continue
+                    nt = neighbor.get("troops", 999)
+                    if nt < best_troops:
+                        best_troops = nt
+                        best_target = neighbor_name
+                        best_from = my_city["name"]
+            if best_target and best_from:
+                from_city = next((c for c in your_cities if c["name"] == best_from), None)
+                if from_city:
+                    troops_to_send = max(100, int(from_city["troops"] * 0.5))
+                    actions.append({
+                        "type": "attack",
+                        "from": best_from,
+                        "target": best_target,
+                        "troops": troops_to_send,
+                    })
+
         # 4. Attack — only when decisive advantage and aggression roll passes
         if your_cities and random.random() < aggression:
             for my_city in your_cities:
@@ -2653,6 +2721,7 @@ def get_or_create_current_game(session: Session) -> Game:
             "grain": INITIAL_GRAIN.get(f, 500),
             "debt": 0,
             "trust_score": TRUST_INITIAL,
+            "_idle_ticks": 0,
         }
         for f in FACTION_POOL
     }

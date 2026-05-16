@@ -653,9 +653,11 @@ def test_attacker_win_loss_25_percent():
     your_cities = {c["name"]: c for c in state["your_cities"]}
     if "宛城" in your_cities:
         troops = your_cities["宛城"]["troops"]
-        # Attacker won: committed 650, should have lost 10%-60% of committed
-        min_expected = int(650 * 0.40)  # 40% remaining
-        max_expected = int(650 * 0.90)  # 90% remaining
+        # Attacker won: committed 650, remaining after losses ≈ 488.
+        # With capture integration (v0.7), garrison now includes integrated
+        # defender troops, so upper bound is higher.
+        min_expected = int(650 * 0.40)  # 40% of committed
+        max_expected = int(650 * 1.30)  # up to 130% (includes integration)
         assert min_expected <= troops <= max_expected, \
             f"Expected {min_expected}-{max_expected} troops, got {troops}"
     else:

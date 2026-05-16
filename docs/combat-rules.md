@@ -68,14 +68,21 @@ defense_power = 守城兵力 × (1 + 防御度 × 0.15)
 - 所有进攻方损失约 25-45%
 - 防守方损失约 10-50%
 
-### §2.5 占领奖励
+### §2.5 占领奖励（以战养战）
 
 攻下一座城（无论中立城还是敌方城）：
+
+**收编残兵**：
+- 守方残余兵力 = `defender_troops - defender_losses`（大衍引擎判定伤亡，不再硬编码全军覆没）
+- 攻方收编 `残余 × CAPTURE_INTEGRATION_RATIO`（默认 40%），直接加入该城守军
+- 收编数与攻方残余兵力叠加，成为新城驻军
+- **中立城同样按此规则收编**（与阵营城一致）
+
+**粮草奖励**：
 - 占领方立刻获得 **+200 粮草**（一次性，加到该势力国库）
-- 占领方驻军保持现有战斗损失逻辑不变
 - 该奖励不进负债、不被后续夺城扣回
 
-> 设计意图：以战养战，打破"越打越穷"的正反馈循环。
+> 设计意图：以战养战，收编降卒 + 粮草奖励双轨并行，让进攻在数学上划算。
 
 ### §2.6 攻击中立城
 
@@ -167,19 +174,27 @@ defense_power = city.troops × defense_multiplier
 
 ### §6A.2 惩罚
 
-- 触发条件：`_idle_ticks > IDLE_PENALTY_THRESHOLD` 且势力仍有城池（即从第 N+1 tick 起）
-- 惩罚：从第 N+1 tick 起，该势力**所有城池**额外消耗粮草：
+- 触发条件：`_idle_ticks > IDLE_PENALTY_THRESHOLD` 且势力仍有城池 **且粮草 ≥ 0**
+- 粮草为负时惩罚**自动压制**（不叠加抽血），但 `idle_ticks` 继续递增
+- 惩罚：该势力**所有城池**额外消耗粮草：
   ```
   extra_upkeep = ⌈total_troops × IDLE_PENALTY_RATIO⌉
   ```
-- `IDLE_PENALTY_RATIO = 0.15`（15%，可配置）
+- `IDLE_PENALTY_RATIO = 0.08`（8%，可配置，Day 9 从 0.15 下调）
 - 该消耗在粮草产出之后扣除，不计入负债
 
-### §6A.3 状态可见性
+### §6A.3 软出口
+
+- 当 `idle_ticks ≥ IDLE_SOFT_EXIT_THRESHOLD`（默认 6）时，`attack` 动作粮草消耗**减半**
+- 给"想打但没钱"的玩家逃生通道
+- `IDLE_SOFT_EXIT_THRESHOLD = 6`、`IDLE_SOFT_EXIT_ATTACK_COST_RATIO = 0.5`（均可配）
+
+### §6A.4 状态可见性
 
 - state API 返回 `idle_ticks: int` — 当前连续未攻击 tick 数
 - state API 返回 `idle_penalty_active: bool` — 是否已触发惩罚
-- agent 可在快到阈值前主动进攻以避免惩罚
+- state API 返回 `idle_penalty_suppressed_reason: string | null` — 压制原因（如 `"negative_grain"`）
+- agent 可在快到阈值前主动进攻以避免惩罚，或利用软出口低成本突围
 
 ---
 

@@ -60,6 +60,11 @@ MANAGED_AI_AGGRESSION: float = float(os.environ.get("MANAGED_AI_AGGRESSION", "0.
 # Managed AI recruit ratio: fraction of grain to spend on recruitment per tick.
 MANAGED_AI_RECRUIT_RATIO: float = float(os.environ.get("MANAGED_AI_RECRUIT_RATIO", "0.3"))
 
+# Managed AI forced attack: every N ticks, must attack the weakest reachable
+# enemy/neutral city regardless of aggression roll or tactical advantage.
+# Prevents "全托管局成纯种田" — forces minimum engagement.
+MANAGED_AI_FORCED_ATTACK_INTERVAL: int = int(os.environ.get("MANAGED_AI_FORCED_ATTACK_INTERVAL", "6"))
+
 # Countdown: seconds from all-3-ready to game start.
 COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
 
@@ -69,7 +74,9 @@ COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
 # diplomacy do NOT count as active behaviour.  Designed to punish passive play
 # and encourage active engagement.
 IDLE_PENALTY_THRESHOLD: int = int(os.environ.get("IDLE_PENALTY_THRESHOLD", "8"))
-IDLE_PENALTY_RATIO: float = float(os.environ.get("IDLE_PENALTY_RATIO", "0.15"))
+IDLE_PENALTY_RATIO: float = float(os.environ.get("IDLE_PENALTY_RATIO", "0.08"))
+IDLE_SOFT_EXIT_THRESHOLD: int = int(os.environ.get("IDLE_SOFT_EXIT_THRESHOLD", "6"))
+IDLE_SOFT_EXIT_ATTACK_COST_RATIO: float = float(os.environ.get("IDLE_SOFT_EXIT_ATTACK_COST_RATIO", "0.5"))
 
 # ── Diplomacy: post-betrayal trust recovery ─────────────────────
 # After alliance_break (or declare_war that breaks an alliance), the betraying
@@ -79,3 +86,10 @@ IDLE_PENALTY_RATIO: float = float(os.environ.get("IDLE_PENALTY_RATIO", "0.15"))
 # This prevents "one betrayal = permanent diplomatic death".
 REFLECTION_TICKS: int = int(os.environ.get("REFLECTION_TICKS", "5"))
 REFLECTION_TRUST_PER_TICK: int = int(os.environ.get("REFLECTION_TRUST_PER_TICK", "3"))
+
+# ── Capture integration (以战养战) ───────────────────────────────
+# When a city is captured, X% of surviving defender troops join the
+# attacker's garrison.  Uses DaYan engine's actual casualty rate,
+# not the hardcoded "all wiped" rule.  Grain reward is separate.
+CAPTURE_INTEGRATION_RATIO: float = float(os.environ.get("CAPTURE_INTEGRATION_RATIO", "0.4"))
+CAPTURE_GRAIN_REWARD: int = int(os.environ.get("CAPTURE_GRAIN_REWARD", "200"))
