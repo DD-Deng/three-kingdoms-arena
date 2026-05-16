@@ -1305,6 +1305,10 @@ def tick(session: Session, game_id: int):
                 "main": dayan_result.main_hexagram.name,
                 "changed": dayan_result.changed_hexagram.name,
             }
+            public_event["dayan_narrative"] = dayan_narrative
+            public_event["dayan_winner"] = dayan_result.winner
+            public_event["casualties_attacker"] = round(dayan_result.total_casualties_attacker, 2)
+            public_event["casualties_defender"] = round(dayan_result.total_casualties_defender, 2)
             detail["dayan"] = {
                 "main_hexagram": dayan_result.main_hexagram.name,
                 "changed_hexagram": dayan_result.changed_hexagram.name,
@@ -2651,6 +2655,7 @@ def join_current_game(session: Session, name: str, faction: str, persona: str | 
 
 def current_game_state(session: Session) -> dict:
     """Public live state for the current game (homepage spectator view)."""
+    from .config import TICK_TIMEOUT_SEC
     game = get_or_create_current_game(session)
 
     # Drive tick advancement on every poll
@@ -2717,6 +2722,10 @@ def current_game_state(session: Session) -> dict:
         "status": game.status,
         "tick": game.tick,
         "winner": game.winner,
+        "tick_started_at": game.tick_started_at,
+        "tick_timeout_sec": TICK_TIMEOUT_SEC,
+        "countdown_deadline": game.countdown_deadline,
+        "countdown_started_at": game.countdown_started_at,
         "cities": [
             {"name": c.name, "owner": c.owner, "troops": c.troops}
             for c in cities

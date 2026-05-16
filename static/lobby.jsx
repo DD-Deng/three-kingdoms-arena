@@ -206,6 +206,7 @@ function JoinModal({ faction, lang, onClose }) {
   const [countdown, setCountdown] = React.useState(null);
 
   const f = FACTIONS[faction];
+  const isSpectator = !f;
 
   React.useEffect(() => {
     if (phase === 'loading' && !result) {
@@ -215,18 +216,22 @@ function JoinModal({ faction, lang, onClose }) {
           setPhase('error');
         } else {
           setResult(res);
-          fetchInstruction(res.session_token).then((text) => {
-            setInstruction(text);
+          if (isSpectator) {
             setPhase('done');
-            // Start countdown (30 min = 1800s)
-            let remaining = 1800;
-            setCountdown(remaining);
-            const iv = setInterval(() => {
-              remaining--;
-              if (remaining <= 0) { clearInterval(iv); setCountdown(0); }
-              else setCountdown(remaining);
-            }, 1000);
-          });
+          } else {
+            fetchInstruction(res.session_token).then((text) => {
+              setInstruction(text);
+              setPhase('done');
+              // Start countdown (30 min = 1800s)
+              let remaining = 1800;
+              setCountdown(remaining);
+              const iv = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) { clearInterval(iv); setCountdown(0); }
+                else setCountdown(remaining);
+              }, 1000);
+            });
+          }
         }
       });
     }
@@ -263,7 +268,7 @@ function JoinModal({ faction, lang, onClose }) {
         <div className="modal-close" onClick={onClose}>✕</div>
 
         {/* Phase: confirm */}
-        {phase === 'confirm' && (
+        {phase === 'confirm' && !isSpectator && (
           <div className="modal-body">
             <div className="modal-icon" style={{ color: f.color }}>⚔</div>
             <h2 style={{ color: f.color }}>
@@ -280,6 +285,29 @@ function JoinModal({ faction, lang, onClose }) {
               </button>
               <button className="btn-primary" onClick={() => setPhase('loading')}>
                 {lang === '中' ? '确认加入' : 'Confirm Join'} ⚔
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Phase: confirm — spectator */}
+        {phase === 'confirm' && isSpectator && (
+          <div className="modal-body">
+            <div className="modal-icon" style={{ color: 'var(--ink-dim)', fontSize: 40 }}>👁</div>
+            <h2 style={{ color: 'var(--ink)' }}>
+              {lang === '中' ? '观战模式' : 'Spectator Mode'}
+            </h2>
+            <p className="modal-hint">
+              {lang === '中'
+                ? '你可以观看战场态势和实时事件，无需占用阵营槽位。'
+                : 'Watch the battlefield and live events without occupying a faction slot.'}
+            </p>
+            <div className="modal-actions" style={{ marginTop: 20 }}>
+              <button className="btn-ghost" onClick={onClose}>
+                {lang === '中' ? '取消' : 'Cancel'}
+              </button>
+              <button className="btn-primary" onClick={() => setPhase('loading')}>
+                👁 {lang === '中' ? '开始观战' : 'Start Watching'}
               </button>
             </div>
           </div>
@@ -312,8 +340,8 @@ function JoinModal({ faction, lang, onClose }) {
           </div>
         )}
 
-        {/* Phase: done — show instruction */}
-        {phase === 'done' && result && (
+        {/* Phase: done — show instruction (faction join) */}
+        {phase === 'done' && result && !isSpectator && (
           <div className="modal-body">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span style={{ color: 'var(--gold)', fontSize: 22 }}>✓</span>
@@ -364,14 +392,34 @@ function JoinModal({ faction, lang, onClose }) {
             </p>
           </div>
         )}
+
+        {/* Phase: done — spectator */}
+        {phase === 'done' && result && isSpectator && (
+          <div className="modal-body" style={{ textAlign: 'center' }}>
+            <div style={{ color: 'var(--gold)', fontSize: 40, marginBottom: 8 }}>👁</div>
+            <h2 style={{ color: 'var(--ink)', margin: '0 0 8px' }}>
+              {lang === '中' ? '正在观战中' : 'Now Watching'}
+            </h2>
+            <p className="modal-hint">
+              {lang === '中'
+                ? '你已接入观战。战场态势会实时刷新。'
+                : 'You are now spectating. The battlefield will update in real time.'}
+            </p>
+            <div className="modal-actions" style={{ marginTop: 20, justifyContent: 'center' }}>
+              <button className="btn-primary" onClick={onClose}>
+                {lang === '中' ? '关闭 · 开始观战' : 'Close · Watch'}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
 }
 
-// ── Spectator mini-map (simplified block layout) ────────────────
-function SpectatorMiniMap({ cities, events, diplomacy, tick, lang }) {
-  // 7 cities laid in a grid matching the actual geography
+// ── Spectator mini-map (upgraded) ─────────────────────────────
+function SpectatorMiniMap({ cities, events, diplomacy, tick, lang, onEventClick }) {
   const positions = {
     '长安': { x: 15, y: 30 },
     '洛阳': { x: 45, y: 18 },
@@ -386,11 +434,14 @@ function SpectatorMiniMap({ cities, events, diplomacy, tick, lang }) {
     '蜀': 'var(--shu)', '魏': 'var(--wei)', '吴': 'var(--wu)',
   };
 
+  const cityList = cities || [];
+  const eventList = events || [];
+  const diplomacyList = diplomacy || [];
+
   return (
     <div className="spec-map-wrap">
-      <div className="spec-map" style={{ position: 'relative', width: '100%', height: 180, background: 'var(--bg)', border: '1px solid var(--line)' }}>
-        {/* Edges */}
-        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <div className="spec-map">
+        <svg className="spec-map-roads" viewBox="0 0 100 100" preserveAspectRatio="none">
           {[
             ['长安', '洛阳'], ['长安', '宛城'], ['长安', '成都'],
             ['洛阳', '邺城'], ['洛阳', '宛城'],
@@ -399,51 +450,158 @@ function SpectatorMiniMap({ cities, events, diplomacy, tick, lang }) {
           ].map(([a, b]) => {
             const pa = positions[a], pb = positions[b];
             return (
-              <line key={a + '-' + b}
-                x1={pa.x + '%'} y1={pa.y + '%'} x2={pb.x + '%'} y2={pb.y + '%'}
-                stroke="var(--line)" strokeWidth={1} opacity={0.6} />
+              <line key={a + '-' + b} className="spec-road"
+                x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} />
             );
           })}
         </svg>
-        {/* Cities */}
-        {cities && cities.map((c) => {
+        {cityList.map((c) => {
           const pos = positions[c.name];
           if (!pos) return null;
-          const color = c.owner ? (factionColors[c.owner] || 'var(--ink-mute)') : '#666';
-          const size = c.owner ? 22 : 14;
+          const fcClass = c.owner ? ('faction-' + c.owner) : 'neutral';
+          const color = c.owner ? (factionColors[c.owner] || 'var(--ink-mute)') : 'var(--ink-mute)';
           return (
-            <div key={c.name} style={{
-              position: 'absolute', left: `calc(${pos.x}% - ${size/2}px)`, top: `calc(${pos.y}% - ${size/2}px)`,
-              width: size, height: size, borderRadius: 4,
-              background: color, border: '1px solid ' + color,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 700, color: c.owner ? '#1a1410' : '#888',
-              cursor: 'default',
-            }} title={`${c.name}: ${c.owner || '中立'} · ${c.troops} 兵`}>
-              {c.name[0]}
+            <div key={c.name}
+              className={'spec-city ' + fcClass}
+              style={{
+                left: pos.x + '%', top: pos.y + '%',
+                '--city-color': color,
+              }}
+              title={`${c.name}: ${c.owner || (lang === '中' ? '中立' : 'Neutral')} · ${c.troops} ${lang === '中' ? '兵' : 'troops'}`}
+            >
+              <span className="spec-city-name">{c.name[0]}</span>
+              <span className="spec-city-troops">{c.troops}</span>
             </div>
           );
         })}
       </div>
-      {/* Event feed */}
       <div className="spec-feed">
-        {events && events.slice(-3).reverse().map((e, i) => (
-          <div key={i} className="feed-item">
-            {e.result === 'captured'
-              ? <span><b style={{ color: factionColors[e.captured_by] || 'var(--ink)' }}>{e.captured_by}</b> {lang === '中' ? '攻占' : 'took'} {e.city}</span>
-              : e.result === 'defended'
-              ? <span><b style={{ color: factionColors[e.defended_by] || 'var(--ink)' }}>{e.defended_by}</b> {lang === '中' ? '守住' : 'defended'} {e.city}</span>
-              : null}
+        {eventList.length > 0
+          ? eventList.slice(-10).reverse().map((e, i) => {
+              const fc = factionColors[e.captured_by || e.defended_by] || 'var(--ink)';
+              const hasNarrative = !!e.dayan_narrative;
+              return (
+                <div key={i}
+                  className={'feed-item' + (hasNarrative ? ' feed-item-clickable' : '')}
+                  onClick={() => hasNarrative && onEventClick && onEventClick(e)}
+                  title={hasNarrative ? (lang === '中' ? '点击查看大衍战报' : 'Click for battle report') : ''}
+                >
+                  {e.result === 'captured'
+                    ? <span><b style={{ color: fc }}>{e.captured_by}</b> {lang === '中' ? '攻占' : 'took'} {e.city}</span>
+                    : e.result === 'defended'
+                    ? <span><b style={{ color: fc }}>{e.defended_by}</b> {lang === '中' ? '守住' : 'defended'} {e.city}</span>
+                    : null}
+                  {hasNarrative && <span className="feed-narrative-hint"> 📜</span>}
+                </div>
+              );
+            })
+          : <div className="feed-item dim">{lang === '中' ? '等待事件…' : 'Waiting…'}</div>
+        }
+        {diplomacyList.slice(-5).reverse().map((d, i) => (
+          <div key={'d' + i} className="feed-item feed-diplomacy">
+            💬 <b style={{ color: factionColors[d.from_faction] || 'var(--ink)' }}>{d.from_faction}</b>: {d.message ? d.message.slice(0, 50) : ''}
           </div>
         ))}
-        {diplomacy && diplomacy.slice(-2).reverse().map((d, i) => (
-          <div key={'d' + i} className="feed-item dim">
-            💬 <b style={{ color: factionColors[d.from_faction] || 'var(--ink)' }}>{d.from_faction}</b>: {d.message ? d.message.slice(0, 40) : ''}
+      </div>
+    </div>
+  );
+}
+
+// ── Tick progress bar ──────────────────────────────────────────
+function TickProgressBar({ tickStartedAt, tickTimeoutSec, lang }) {
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(iv);
+  }, []);
+
+  if (!tickStartedAt) return null;
+
+  const elapsedMs = now - new Date(tickStartedAt).getTime();
+  const timeoutMs = (tickTimeoutSec || 60) * 1000;
+  const pct = Math.min(100, Math.max(0, (elapsedMs / timeoutMs) * 100));
+  const remainSec = Math.max(0, Math.floor((timeoutMs - elapsedMs) / 1000));
+  const isUrgent = remainSec <= 10;
+
+  return (
+    <div className="tick-progress-wrap">
+      <div className={'tick-progress-bar' + (isUrgent ? ' urgent' : '')}
+        style={{ width: pct + '%' }} />
+      <span className="tick-progress-label">
+        {remainSec}s {lang === '中' ? '剩余' : 'left'}
+      </span>
+    </div>
+  );
+}
+
+// ── Agent status bar ───────────────────────────────────────────
+function AgentStatusBar({ agents, lang }) {
+  const factionOrder = ['蜀', '魏', '吴'];
+  return (
+    <div className="agent-status-bar">
+      {factionOrder.map(faction => {
+        const agent = (agents || []).find(a => a.faction === faction);
+        const submitted = agent ? agent.submitted : false;
+        const fc = FACTIONS[faction].color;
+        return (
+          <div key={faction} className={'agent-status-item' + (submitted ? ' submitted' : ' pending')}>
+            <span className="agent-status-dot" style={{ color: fc }}>
+              {submitted ? '●' : '○'}
+            </span>
+            <span className="agent-status-label">
+              {faction} {submitted ? '✓' : '…'}
+            </span>
           </div>
-        ))}
-        {(!events || events.length === 0) && (!diplomacy || diplomacy.length === 0) && (
-          <div className="feed-item dim">{lang === '中' ? '等待事件…' : 'Waiting for events…'}</div>
-        )}
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Commentary modal ───────────────────────────────────────────
+function CommentaryModal({ event, lang, onClose }) {
+  if (!event) return null;
+
+  const factionColors = { '蜀': 'var(--shu)', '魏': 'var(--wei)', '吴': 'var(--wu)' };
+  const isCaptured = event.result === 'captured';
+  const winner = isCaptured ? event.captured_by : event.defended_by;
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-box commentary-modal">
+        <div className="modal-close" onClick={onClose}>✕</div>
+        <div className="modal-body">
+          <h3 style={{ color: factionColors[winner] || 'var(--gold)' }}>
+            {event.city} · {isCaptured
+              ? (lang === '中' ? `${event.captured_by} 攻占` : `${event.captured_by} captured`)
+              : (lang === '中' ? `${event.defended_by} 守住` : `${event.defended_by} defended`)}
+          </h3>
+
+          {event.dayan_hexagram && (
+            <div className="commentary-hexagrams">
+              <span>{lang === '中' ? '主卦' : 'Main'}: {event.dayan_hexagram.main}</span>
+              <span>{lang === '中' ? '变卦' : 'Changed'}: {event.dayan_hexagram.changed}</span>
+            </div>
+          )}
+
+          {event.dayan_narrative && (
+            <div className="commentary-narrative">
+              <h4>{lang === '中' ? '📜 大衍战报' : '📜 DaYan Battle Report'}</h4>
+              <div className="narrative-text">{event.dayan_narrative}</div>
+            </div>
+          )}
+
+          {event.casualties_attacker != null && (
+            <div className="commentary-stats">
+              <span>{lang === '中' ? '攻方折损' : 'Atk loss'}: {(event.casualties_attacker * 100).toFixed(0)}%</span>
+              <span>{lang === '中' ? '守方折损' : 'Def loss'}: {(event.casualties_defender * 100).toFixed(0)}%</span>
+              <span>{lang === '中' ? '天命归属' : 'Destiny'}: {event.dayan_winner === 'attacker'
+                ? (lang === '中' ? '攻方' : 'Attacker')
+                : (lang === '中' ? '守方' : 'Defender')}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -507,13 +665,14 @@ function GameEndModal({ game, lang, onClose }) {
 // ═══════════════════════════════════════════════════════════════
 // LobbySection — main lobby page
 // ═══════════════════════════════════════════════════════════════
-function LobbySection({ lang }) {
+function LobbySection({ lang, currentGame }) {
   const [lobby, setLobby] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [joinFaction, setJoinFaction] = React.useState(null);
   const [showEndModal, setShowEndModal] = React.useState(false);
   const [prevStatus, setPrevStatus] = React.useState(null);
+  const [selectedEvent, setSelectedEvent] = React.useState(null);
 
   // Poll lobby status
   React.useEffect(() => {
@@ -651,24 +810,49 @@ function LobbySection({ lang }) {
               {lang === '中' ? '每 3 秒刷新' : 'Refreshes every 3s'}
             </span>
           </div>
+
+          {/* Agent submission status — from /current-game */}
+          {currentGame && currentGame.agents && g.status === 'active' && (
+            <AgentStatusBar agents={currentGame.agents} lang={lang} />
+          )}
+
+          {/* Tick progress bar — from /current-game */}
+          {g.status === 'active' && currentGame && currentGame.tick_started_at && (
+            <TickProgressBar
+              tickStartedAt={currentGame.tick_started_at}
+              tickTimeoutSec={currentGame.tick_timeout_sec}
+              lang={lang}
+            />
+          )}
+
           <SpectatorMiniMap
-            cities={g.cities}
-            events={g.events}
-            diplomacy={g.diplomacy}
+            cities={currentGame && currentGame.cities ? currentGame.cities : g.cities}
+            events={currentGame && currentGame.events ? currentGame.events : (g.events || [])}
+            diplomacy={currentGame && currentGame.diplomacy ? currentGame.diplomacy : (g.diplomacy || [])}
             tick={tick}
             lang={lang}
+            onEventClick={(e) => setSelectedEvent(e)}
           />
-          {/* Quick faction stats */}
+
+          {/* Faction stats — from /current-game if available */}
           <div className="spec-stats">
             {['蜀', '魏', '吴'].map((faction) => {
-              const ownedCities = (g.cities || []).filter(c => c.owner === faction);
-              const totalTroops = ownedCities.reduce((s, c) => s + (c.troops || 0), 0);
+              const cgFaction = currentGame && currentGame.factions ? currentGame.factions[faction] : null;
+              const ownedCities = cgFaction
+                ? cgFaction.cities
+                : (g.cities || []).filter(c => c.owner === faction).length;
+              const totalTroops = cgFaction
+                ? cgFaction.troops
+                : (g.cities || []).filter(c => c.owner === faction).reduce((s, c) => s + (c.troops || 0), 0);
               const fc = FACTIONS[faction].color;
               return (
                 <div key={faction} className="spec-stat-item">
                   <b style={{ color: fc }}>{faction}</b>
-                  <span>{ownedCities.length} {lang === '中' ? '城' : 'c'}</span>
+                  <span>{ownedCities} {lang === '中' ? '城' : 'c'}</span>
                   <span>{totalTroops} {lang === '中' ? '兵' : '⚔'}</span>
+                  {cgFaction && cgFaction.alliance_with && (
+                    <span className="spec-alliance">🤝 {cgFaction.alliance_with}</span>
+                  )}
                 </div>
               );
             })}
@@ -691,6 +875,15 @@ function LobbySection({ lang }) {
           game={g}
           lang={lang}
           onClose={() => setShowEndModal(false)}
+        />
+      )}
+
+      {/* ── Commentary modal ──────────────────────── */}
+      {selectedEvent && (
+        <CommentaryModal
+          event={selectedEvent}
+          lang={lang}
+          onClose={() => setSelectedEvent(null)}
         />
       )}
     </section>

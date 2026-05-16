@@ -926,24 +926,105 @@
 .theme-ink .spinner { border-top-color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Spectator section ───────────────────────────────────────────── */
+/* ── Spectator section ─────────────────────────────────────── */
 .spec-section { margin-top: 8px; }
 .spec-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--panel); border: 1px solid var(--line);
   border-bottom: none; font-size: 14px; font-weight: 600; color: var(--ink);
 }
+
+/* Agent status bar */
+.agent-status-bar {
+  display: flex; gap: 0;
+  border: 1px solid var(--line); border-top: none;
+  background: var(--panel); padding: 6px 0;
+}
+.agent-status-item {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 4px; font-size: 12px; font-family: var(--font-mono);
+  padding: 4px 0; color: var(--ink-dim);
+}
+.agent-status-item.submitted { color: var(--gold); }
+.agent-status-dot { font-size: 10px; }
+
+/* Tick progress bar */
+.tick-progress-wrap {
+  height: 3px; background: var(--line-2);
+  position: relative;
+}
+.tick-progress-bar {
+  height: 100%; background: var(--gold);
+  transition: width 100ms linear;
+}
+.tick-progress-bar.urgent { background: var(--shu); }
+.tick-progress-label {
+  position: absolute; right: 4px; top: -18px;
+  font-size: 10px; font-family: var(--font-mono);
+  color: var(--ink-dim);
+}
+
+/* Map container */
 .spec-map-wrap {
-  display: grid; grid-template-columns: 1.2fr 1fr; gap: 0;
+  display: grid; grid-template-columns: 3fr 1fr; gap: 0;
   border: 1px solid var(--line); background: var(--panel);
 }
 .spec-map {
-  min-height: 180px; position: relative;
+  position: relative; overflow: hidden;
+  min-height: 220px;
+  background: radial-gradient(ellipse at center,
+    var(--panel-2) 0%, var(--bg) 100%);
 }
+
+/* SVG road layer */
+.spec-map-roads {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.spec-road {
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  opacity: 0.5;
+}
+
+/* City nodes */
+.spec-city {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: default; z-index: 1;
+}
+.spec-city.neutral {
+  width: 16px; height: 16px;
+  background: var(--ink-mute);
+  border: 1px solid var(--line);
+}
+.spec-city.faction-蜀, .spec-city.faction-魏, .spec-city.faction-吴 {
+  width: 24px; height: 24px;
+  background: var(--city-color);
+  border: 2px solid var(--city-color);
+  box-shadow: 0 0 6px rgba(212,168,75,0.25);
+}
+.spec-city-name {
+  font-size: 11px; font-weight: 700;
+  color: #1a1410; line-height: 1;
+}
+.spec-city-troops {
+  font-size: 8px; font-family: var(--font-mono);
+  color: var(--ink);
+  position: absolute; top: 100%; margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Event feed */
 .spec-feed {
   display: flex; flex-direction: column; gap: 0;
   border-left: 1px solid var(--line);
-  max-height: 180px; overflow-y: auto;
+  max-height: 220px; overflow-y: auto;
   font-family: var(--font-mono); font-size: 11px;
 }
 .feed-item {
@@ -952,20 +1033,54 @@
 }
 .feed-item.dim { color: var(--ink-mute); opacity: 0.7; }
 .feed-item b { color: var(--ink); }
+.feed-item-clickable { cursor: pointer; }
+.feed-item-clickable:hover { background: var(--panel-2); }
+.feed-diplomacy { font-style: italic; }
+.feed-narrative-hint { font-size: 10px; opacity: 0.5; }
 
+/* Faction stats */
 .spec-stats {
   display: flex; gap: 0; padding: 0;
   background: var(--panel); border: 1px solid var(--line); border-top: none;
 }
 .spec-stat-item {
-  flex: 1; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; align-items: center;
-  font-size: 12px; color: var(--ink-dim); border-right: 1px solid var(--line-2);
-  font-family: var(--font-mono);
+  flex: 1; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px;
+  align-items: center; font-size: 12px; color: var(--ink-dim);
+  border-right: 1px solid var(--line-2); font-family: var(--font-mono);
 }
 .spec-stat-item:last-child { border-right: none; }
 .spec-stat-item b { font-size: 14px; }
+.spec-alliance { font-size: 10px; color: var(--gold); }
 
-/* ── Game end modal ──────────────────────────────────────────────── */
+/* Commentary modal */
+.commentary-modal { max-width: 560px; }
+.commentary-hexagrams {
+  display: flex; gap: 16px; margin: 8px 0;
+  font-family: var(--font-mono); font-size: 13px;
+  color: var(--gold-dim);
+}
+.commentary-narrative { margin-top: 12px; }
+.commentary-narrative h4 {
+  font-size: 13px; color: var(--gold);
+  margin: 0 0 8px 0;
+}
+.narrative-text {
+  font-size: 13px; line-height: 1.8;
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  max-height: 300px; overflow-y: auto;
+  padding: 10px; background: var(--bg);
+  border: 1px solid var(--line);
+  font-family: var(--font-sans);
+}
+.commentary-stats {
+  display: flex; gap: 12px; margin-top: 8px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink-mute);
+  flex-wrap: wrap;
+}
+
+/* ── Game end modal ─────────────────────────────────────────── */
 .game-end-modal {
   text-align: center;
 }
@@ -973,13 +1088,14 @@
   padding: 36px 28px;
 }
 
-/* ── Lobby responsive ────────────────────────────────────────────── */
+/* ── Lobby responsive ───────────────────────────────────────── */
 @media (max-width: 880px) {
   .slot-grid { grid-template-columns: 1fr; }
   .lobby-title { font-size: 26px; }
   .lobby-status-bar { gap: 12px; font-size: 11px; }
   .spec-map-wrap { grid-template-columns: 1fr; }
-  .spec-feed { border-left: none; border-top: 1px solid var(--line); max-height: 120px; }
+  .spec-feed { border-left: none; border-top: 1px solid var(--line); max-height: 160px; }
+  .spec-map { min-height: 200px; }
   .modal-box { max-width: 100%; max-height: 90vh; }
   .token-row { flex-direction: column; align-items: flex-start; gap: 4px; }
   .token-expiry { margin-left: 0; }

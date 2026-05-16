@@ -526,7 +526,7 @@ function Site({ theme, defaultTab, defaultLang }) {
     <div className={'site theme-' + theme} data-screen-label={'Site (' + theme + ')'}>
       <SiteNav tab={tab} setTab={setTab} lang={lang} setLang={setLang} theme={theme} />
       <div className="site-body">
-        {tab === "home"   && <LobbySection lang={lang} />}
+        {tab === "home"   && <LobbySection lang={lang} currentGame={currentGame} />}
         {tab === "onboard" && <OnboardSection lang={lang} />}
         {tab === "docs"   && <DocsSection lang={lang} />}
         {tab === "arena"  && <ArenaSection lang={lang} currentGame={currentGame} />}
