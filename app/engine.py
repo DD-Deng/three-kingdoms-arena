@@ -177,7 +177,7 @@ def join_game(
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
-    if game.status != "waiting" and game.tick > 0:
+    if game.status not in ("lobby", "countdown") and game.tick > 0:
         raise ValueError("对局已开始")
     if faction not in FACTION_POOL:
         raise ValueError(f"势力必须是: {FACTION_POOL}")
@@ -604,7 +604,7 @@ def submit_actions(
     if game.status == "paused":
         raise ValueError("对局已暂停，等待玩家加入")
 
-    if game.status == "waiting":
+    if game.status in ("lobby", "countdown"):
         game.status = "active"
         session.add(game)
         session.commit()
@@ -875,7 +875,7 @@ def tick(session: Session, game_id: int):
     if len(agents) == 0:
         raise ValueError("没有 agent 加入，无法推进")
 
-    if game.status == "waiting":
+    if game.status in ("lobby", "countdown"):
         game.status = "active"
 
     cities = session.exec(select(City).where(City.game_id == game_id)).all()
@@ -1566,9 +1566,9 @@ def _write_logs(
 
 
 def lobby_list_games(session: Session) -> list[dict]:
-    """Return all joinable PvP games (status=waiting, mode=pvp)."""
+    """Return all joinable PvP games (status=lobby/countdown, mode=pvp)."""
     games = session.exec(
-        select(Game).where(Game.mode == "pvp", Game.status == "waiting")
+        select(Game).where(Game.mode == "pvp", Game.status.in_(["lobby", "countdown"]))
     ).all()
     result = []
     for g in games:
@@ -1614,7 +1614,7 @@ def pvp_create_game(
     # Create the game
     game = Game(
         mode="pvp",
-        status="waiting",
+        status="lobby",
         auto_advance=True,
         title=title,
         max_ticks=max_ticks,
@@ -1719,7 +1719,7 @@ def pvp_join_managed(
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
-    if game.status != "waiting":
+    if game.status not in ("lobby", "countdown"):
         raise ValueError("对局已开始")
     if faction not in FACTION_POOL:
         raise ValueError(f"势力必须是: {FACTION_POOL}")
@@ -1779,7 +1779,7 @@ def pvp_join_selfhosted(
     game = session.get(Game, game_id)
     if game is None:
         raise ValueError("对局不存在")
-    if game.status != "waiting":
+    if game.status not in ("lobby", "countdown"):
         raise ValueError("对局已开始")
     if faction not in FACTION_POOL:
         raise ValueError(f"势力必须是: {FACTION_POOL}")
@@ -1858,7 +1858,7 @@ def pvp_start_game(session: Session, game_id: int, token: str) -> dict:
         raise ValueError("对局不存在")
     if game.mode != "pvp":
         raise ValueError("不是 PvP 对局")
-    if game.status != "waiting":
+    if game.status not in ("lobby", "countdown"):
         raise ValueError("对局已开始")
 
     agent = session.exec(
@@ -2301,6 +2301,36 @@ def pvp_maybe_advance(session: Session, game_id: int):
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
 
+    # ── Countdown → active transition ────────────────────────
+    if game.status == "countdown":
+        if game.countdown_deadline:
+            try:
+                deadline = datetime.fromisoformat(game.countdown_deadline)
+                if now_dt >= deadline:
+                    game.status = "active"
+                    game.tick_started_at = now_iso
+                    game.countdown_deadline = None
+                    session.add(game)
+                    session.commit()
+                    print(f"[pvp_tick] Game #{game_id} countdown finished — now active")
+                    # Trigger managed agent decisions for tick 0
+                    managed = session.exec(
+                        select(Agent).where(
+                            Agent.game_id == game_id, Agent.agent_mode == "managed",
+                            Agent.is_active == True,
+                        )
+                    ).all()
+                    for ma in managed:
+                        try:
+                            auto_decide_managed(session, game_id, ma)
+                        except Exception:
+                            pass
+                    return
+            except Exception:
+                pass
+        # Still in countdown — don't do anything else
+        return
+
     slots = session.exec(select(SlotModel).where(SlotModel.game_id == game_id)).all()
     agents = session.exec(
         select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
@@ -2446,7 +2476,7 @@ def get_or_create_current_game(session: Session) -> Game:
         select(Game).where(
             Game.is_current == True,
             Game.mode == "pvp",
-            Game.status.in_(["waiting", "active"]),
+            Game.status.in_(["lobby", "countdown", "active"]),
         )
     ).first()
     if game:
@@ -2463,7 +2493,7 @@ def get_or_create_current_game(session: Session) -> Game:
     # Create a fresh game with all three managed AI agents
     game = Game(
         mode="pvp",
-        status="waiting",
+        status="lobby",
         auto_advance=True,
         max_ticks=50,
         is_current=True,
@@ -2548,7 +2578,7 @@ def get_or_create_current_game(session: Session) -> Game:
 def join_current_game(session: Session, name: str, faction: str, persona: str | None = None) -> dict:
     """Join the current game as a managed agent, replacing the default AI for that faction."""
     game = get_or_create_current_game(session)
-    if game.status not in ("waiting", "active"):
+    if game.status not in ("lobby", "countdown", "active"):
         raise ValueError("当前对局不允许加入")
 
     if faction not in FACTION_POOL:

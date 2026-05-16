@@ -13,6 +13,7 @@ def _migrate():
         inspector = inspect(engine)
         game_cols = {c["name"] for c in inspector.get_columns("game")} if "game" in inspector.get_table_names() else set()
         agent_cols = {c["name"] for c in inspector.get_columns("agent")} if "agent" in inspector.get_table_names() else set()
+        slot_cols = {c["name"] for c in inspector.get_columns("slot")} if "slot" in inspector.get_table_names() else set()
 
         # Add new columns to game table if missing
         game_migrations = [
@@ -20,6 +21,8 @@ def _migrate():
             ("started_at", "TEXT"),
             ("finished_at", "TEXT"),
             ("tick_started_at", "TEXT"),
+            ("countdown_started_at", "TEXT"),
+            ("countdown_deadline", "TEXT"),
         ]
         for col_name, col_type in game_migrations:
             if col_name not in game_cols:
@@ -39,6 +42,20 @@ def _migrate():
             if col_name not in agent_cols:
                 try:
                     conn.execute(text(f"ALTER TABLE agent ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                except Exception:
+                    pass
+
+        # Add ready/countdown columns to slot table if missing
+        slot_migrations = [
+            ("ready", "BOOLEAN DEFAULT 0"),
+            ("ready_at", "TEXT"),
+            ("agent_display_name", "TEXT"),
+        ]
+        for col_name, col_type in slot_migrations:
+            if col_name not in slot_cols:
+                try:
+                    conn.execute(text(f"ALTER TABLE slot ADD COLUMN {col_name} {col_type}"))
                     conn.commit()
                 except Exception:
                     pass

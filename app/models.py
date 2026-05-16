@@ -50,7 +50,7 @@ class RegisteredAgent(SQLModel, table=True):
 class Game(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tick: int = Field(default=0)
-    status: str = Field(default="waiting")  # waiting | active | finished
+    status: str = Field(default="lobby")  # lobby | countdown | active | paused | finished
     winner: Optional[str] = Field(default=None)
     last_tick_events: Optional[str] = Field(default=None)  # JSON: public events (sanitized)
     last_tick_diplomacy: Optional[str] = Field(default=None)  # JSON: public diplomacy messages
@@ -73,6 +73,10 @@ class Game(SQLModel, table=True):
     started_at: Optional[str] = Field(default=None)
     finished_at: Optional[str] = Field(default=None)
 
+    # Countdown fields (3人齐ready → 5秒倒计时 → 开打)
+    countdown_started_at: Optional[str] = Field(default=None)
+    countdown_deadline: Optional[str] = Field(default=None)
+
 
 # ═══════════════════════════════════════════════════════════════
 # Slot —— 阵营槽位（每局 3 个，先到先得）
@@ -88,6 +92,10 @@ class Slot(SQLModel, table=True):
     occupied_by_ip: Optional[str] = Field(default=None)
     occupied_by_persona_hash: Optional[str] = Field(default=None)
     joined_at: Optional[str] = Field(default=None)
+    # Ready system (agent declares ready before game starts)
+    ready: bool = Field(default=False)
+    ready_at: Optional[str] = Field(default=None)
+    agent_display_name: Optional[str] = Field(default=None)
 
 
 # ═══════════════════════════════════════════════════════════════

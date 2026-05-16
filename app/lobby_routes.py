@@ -43,6 +43,7 @@ def _load_persona(faction: str) -> str:
 
 def build_instruction(session_token: str, game_id: int, faction: str) -> str:
     """Render the instruction markdown from the Jinja2 template."""
+    from .config import COUNTDOWN_SEC
     persona_text = _load_persona(faction)
     template = _jinja.get_template("instruction_zh.md.j2")
     return template.render(
@@ -51,6 +52,7 @@ def build_instruction(session_token: str, game_id: int, faction: str) -> str:
         faction=faction,
         server_url=SERVER_URL,
         persona_text=persona_text,
+        COUNTDOWN_SEC=COUNTDOWN_SEC,
     )
 
 
@@ -95,6 +97,8 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
         import hashlib
         persona_hash = hashlib.sha256(persona.encode()).hexdigest()[:16]
 
+    agent_display_name = body.get("agent_display_name")
+
     try:
         result = lobby.join_slot(
             session,
@@ -102,6 +106,7 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
             ip=ip,
             persona_hash=persona_hash,
             ua=request.headers.get("User-Agent", ""),
+            agent_display_name=agent_display_name,
         )
     except ValueError as e:
         detail = str(e)
@@ -143,6 +148,45 @@ def lobby_reconnect(body: dict, request: Request, session: Session = Depends(get
         return lobby.reconnect_session(session, token)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# Ready / Unready (agent declares readiness before game starts)
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.post("/lobby/ready")
+def lobby_ready(body: dict, session: Session = Depends(get_session)):
+    """Agent declares ready. When all 3 occupied slots are ready, countdown starts."""
+    token = body.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="token 不能为空")
+    try:
+        return lobby.declare_ready(session, token)
+    except ValueError as e:
+        detail = str(e)
+        if "已开始" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "观战" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+
+@router.post("/lobby/unready")
+def lobby_unready(body: dict, session: Session = Depends(get_session)):
+    """Agent cancels ready. Reverts countdown to lobby if countdown was active."""
+    token = body.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="token 不能为空")
+    try:
+        return lobby.cancel_ready(session, token)
+    except ValueError as e:
+        detail = str(e)
+        if "已开始" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "观战" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
 
 
 # ═══════════════════════════════════════════════════════════════

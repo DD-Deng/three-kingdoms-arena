@@ -2,7 +2,7 @@
 
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlmodel import Session, select
 
 from .models import Game, Slot, Session as SessionModel, Agent, Player, RegisteredAgent, BattleHistory
@@ -231,7 +231,7 @@ def get_lobby_status(session: Session) -> dict:
     game = get_active_game(session)
 
     # Drive tick advancement — browser polls this every 3s
-    if game.mode == "pvp" and game.status in ("active", "paused"):
+    if game.mode == "pvp" and game.status in ("active", "paused", "countdown"):
         try:
             eng.pvp_maybe_advance(session, game.id)
         except Exception:
@@ -256,13 +256,14 @@ def get_lobby_status(session: Session) -> dict:
     for faction in FACTION_POOL:
         s = slot_map.get(faction)
         if s is None:
-            slots_status[faction] = {"status": "open", "occupied_since": None}
+            slots_status[faction] = {"status": "open", "occupied_since": None, "ready": False}
             continue
 
         status = s.status
-        info = {"status": status, "occupied_since": s.joined_at}
+        info = {"status": status, "occupied_since": s.joined_at, "ready": s.ready}
 
         if status == "occupied":
+            info["agent_display_name"] = s.agent_display_name
             # Check heartbeat
             if s.last_heartbeat_at:
                 last = datetime.fromisoformat(s.last_heartbeat_at)
@@ -274,6 +275,7 @@ def get_lobby_status(session: Session) -> dict:
                     session.commit()
                     status = "disconnected"
                     info["status"] = "disconnected"
+                    info["ready"] = False
                     info["disconnected_sec"] = int(ago)
                 else:
                     info["online_sec"] = int(ago)
@@ -347,6 +349,8 @@ def get_lobby_status(session: Session) -> dict:
         "max_ticks": game.max_ticks,
         "winner": game.winner,
         "started_at": game.started_at,
+        "countdown_started_at": game.countdown_started_at,
+        "countdown_deadline": game.countdown_deadline,
         "slots": slots_status,
         "spectator_count": spec_count,
         "cities": [
@@ -358,12 +362,120 @@ def get_lobby_status(session: Session) -> dict:
     }
 
 
+# ═══════════════════════════════════════════════════════════════
+# Ready / Unready (agent declares readiness before game starts)
+# ═══════════════════════════════════════════════════════════════
+
+def declare_ready(session: Session, token: str) -> dict:
+    """Agent declares ready. When all 3 occupied slots are ready, triggers countdown."""
+    from .config import COUNTDOWN_SEC
+
+    sess = session.get(SessionModel, token)
+    if sess is None:
+        raise ValueError("无效 session_token")
+    if sess.faction == "spectator":
+        raise ValueError("观战 token 不能提交 ready")
+
+    game = session.get(Game, sess.game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    if game.status not in ("lobby", "countdown"):
+        raise ValueError("对局已开始，无法 ready")
+
+    slot = session.exec(
+        select(Slot).where(Slot.game_id == game.id, Slot.faction == sess.faction)
+    ).first()
+    if slot is None or slot.session_token != token:
+        raise ValueError("槽位不匹配")
+
+    if slot.ready:
+        return {
+            "status": "already_ready",
+            "all_ready": _all_occupied_ready(session, game.id),
+        }
+
+    now = _now()
+    slot.ready = True
+    slot.ready_at = now
+    session.add(slot)
+    session.commit()
+
+    all_ready = _all_occupied_ready(session, game.id)
+    countdown_started = False
+
+    if all_ready:
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=COUNTDOWN_SEC)
+        game.status = "countdown"
+        game.countdown_started_at = now
+        game.countdown_deadline = deadline.isoformat()
+        session.add(game)
+        session.commit()
+        countdown_started = True
+
+    return {
+        "status": "ready",
+        "all_ready": all_ready,
+        "countdown_started": countdown_started,
+        "countdown_deadline": game.countdown_deadline,
+    }
+
+
+def cancel_ready(session: Session, token: str) -> dict:
+    """Agent cancels ready. If countdown was active, returns game to lobby."""
+    sess = session.get(SessionModel, token)
+    if sess is None:
+        raise ValueError("无效 session_token")
+    if sess.faction == "spectator":
+        raise ValueError("观战 token 不能取消 ready")
+
+    game = session.get(Game, sess.game_id)
+    if game is None:
+        raise ValueError("对局不存在")
+    if game.status not in ("lobby", "countdown"):
+        raise ValueError("对局已开始，无法取消 ready")
+
+    slot = session.exec(
+        select(Slot).where(Slot.game_id == game.id, Slot.faction == sess.faction)
+    ).first()
+    if slot is None or slot.session_token != token:
+        raise ValueError("槽位不匹配")
+
+    if not slot.ready:
+        return {"status": "not_ready"}
+
+    slot.ready = False
+    slot.ready_at = None
+    session.add(slot)
+
+    # If we were in countdown, cancel it
+    if game.status == "countdown":
+        game.status = "lobby"
+        game.countdown_started_at = None
+        game.countdown_deadline = None
+        session.add(game)
+
+    session.commit()
+    return {"status": "unready", "game_status": game.status}
+
+
+def _all_occupied_ready(session: Session, game_id: int) -> bool:
+    """Check if all occupied slots have declared ready."""
+    slots = session.exec(
+        select(Slot).where(Slot.game_id == game_id)
+    ).all()
+    occupied = [s for s in slots if s.status == "occupied"]
+    if len(occupied) < 3:
+        return False
+    return all(s.ready for s in occupied)
+
+
 def join_slot(
     session: Session,
     faction: str,
     ip: str,
     persona_hash: str | None = None,
     ua: str | None = None,
+    agent_display_name: str | None = None,
 ) -> dict:
     """Join a faction slot. Returns session info or raises ValueError."""
     game = get_active_game(session)
@@ -473,6 +585,9 @@ def join_slot(
     slot.occupied_by_ip = ip
     slot.occupied_by_persona_hash = persona_hash
     slot.joined_at = now
+    slot.ready = False
+    slot.ready_at = None
+    slot.agent_display_name = agent_display_name or f"BYOA-{faction}"
     session.add(slot)
 
     # Create session record

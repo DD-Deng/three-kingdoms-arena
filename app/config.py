@@ -59,3 +59,6 @@ MANAGED_AI_AGGRESSION: float = float(os.environ.get("MANAGED_AI_AGGRESSION", "0.
 
 # Managed AI recruit ratio: fraction of grain to spend on recruitment per tick.
 MANAGED_AI_RECRUIT_RATIO: float = float(os.environ.get("MANAGED_AI_RECRUIT_RATIO", "0.3"))
+
+# Countdown: seconds from all-3-ready to game start.
+COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
