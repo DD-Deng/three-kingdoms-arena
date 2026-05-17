@@ -123,79 +123,217 @@ html, body {
   flex: 1;
   border: 2px solid var(--line);
   background: var(--panel);
-  padding: 16px;
+  padding: 20px 18px;
+  transition: border-color 0.3s, background 0.3s, opacity 0.3s;
 }
 .slot-faction {
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
-.slot-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  margin-bottom: 10px;
+.slot-monarch {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-dim);
 }
-.slot-label { color: var(--ink-dim); }
-.slot-ip { color: var(--ink-mute); font-family: var(--font-mono); }
-.slot-dc { color: var(--accent); }
-.slot-not-ready { color: var(--ink-mute); font-style: italic; }
-.slot-ready { color: var(--wu); font-weight: 600; }
 
-.slot-actions button {
-  background: var(--panel);
+/* Slot status label */
+.slot-status-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.slot-desc {
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-bottom: 12px;
+  min-height: 18px;
+}
+
+/* ── Slot state variants ─────────────────────── */
+.slot-open {
+  border-color: var(--line);
+  opacity: 0.7;
+}
+.slot-open .slot-status-label { color: var(--ink-mute); }
+
+.slot-ai {
+  border-color: var(--gold-dim);
+  background: #1f1a10;
+}
+.slot-ai .slot-status-label { color: var(--gold); }
+
+.slot-occupied {
+  border-color: var(--ink-mute);
+}
+.slot-occupied .slot-status-label { color: var(--ink-dim); }
+
+.slot-ready {
+  border-color: var(--wu);
+  background: #102010;
+}
+.slot-ready .slot-status-label { color: var(--wu); }
+
+.slot-disconnected {
+  border-color: var(--accent);
+  opacity: 0.6;
+}
+.slot-disconnected .slot-status-label { color: var(--accent); }
+
+.slot-locked {
+  border-color: var(--gold);
+  background: #1a1810;
+}
+.slot-locked .slot-status-label { color: var(--gold); }
+
+.slot-finished {
+  border-color: var(--ink-mute);
+  opacity: 0.4;
+}
+
+/* ── Slot buttons ─────────────────────────────── */
+.slot-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  background: transparent;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-ai {
   border: 1px solid var(--gold-dim);
   color: var(--gold);
-  padding: 6px 16px;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 13px;
 }
-.slot-actions button:hover {
-  background: var(--gold-dim);
-  color: var(--bg);
+.btn-ai:hover { background: var(--gold-dim); color: var(--bg); }
+
+.btn-join {
+  border: 1px solid var(--ink-mute);
+  color: var(--ink);
+}
+.btn-join:hover { background: var(--ink-mute); color: var(--bg); }
+
+.btn-grab {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.btn-grab:hover { background: var(--accent); color: var(--bg); }
+
+.btn-release {
+  border: 1px solid var(--ink-mute);
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+.btn-release:hover { background: var(--ink-mute); color: var(--bg); }
+
+.slot-need-ready {
+  color: var(--accent);
+  font-size: 12px;
+  font-style: italic;
 }
 
-/* ── Debug section ────────────────────────────── */
-.debug-section {
-  margin-top: 30px;
-  padding: 16px;
-  border: 1px dashed var(--line);
+/* Reconnect info */
+.slot-reconnect-info {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  line-height: 1.4;
 }
-.debug-section h4 {
-  margin-bottom: 8px;
+
+/* ── Status tag by game state ─────────────────── */
+.status-tag {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 2px 10px;
+}
+.status-active, .status-in_progress { color: var(--wu); }
+.status-paused { color: var(--accent); }
+.status-countdown { color: var(--gold); }
+.status-finished { color: var(--ink-dim); }
+.status-lobby { color: var(--ink); }
+
+/* ── Lobby header ─────────────────────────────── */
+.lobby-header {
+  margin-bottom: 10px;
+}
+.lobby-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.lobby-title-row h1 {
+  margin-bottom: 0;
+  font-size: 26px;
+  letter-spacing: 2px;
+}
+.lobby-meta {
   color: var(--ink-dim);
   font-size: 14px;
 }
-.debug-section button {
-  background: var(--panel);
-  border: 1px solid var(--ink-mute);
-  color: var(--ink);
-  padding: 6px 16px;
-  cursor: pointer;
-  font-family: var(--font-sans);
+
+/* ── Countdown overlay ────────────────────────── */
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 8, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.countdown-number {
+  font-family: var(--font-mono);
+  font-size: 140px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+.countdown-label {
+  font-size: 22px;
+  color: var(--ink-dim);
+  margin-top: 12px;
+  letter-spacing: 8px;
 }
 
-/* ── Tables ───────────────────────────────────── */
-.city-table, .faction-table {
-  width: 100%;
-  border-collapse: collapse;
+/* ── Lobby footer ─────────────────────────────── */
+.lobby-footer {
+  margin-top: 30px;
+  text-align: center;
 }
-.city-table th, .faction-table th {
-  text-align: left;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
+.btn-spectate {
+  background: transparent;
+  border: 1px solid var(--ink-mute);
   color: var(--ink-dim);
-  font-size: 13px;
-  font-weight: 500;
+  padding: 8px 24px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
 }
-.city-table td, .faction-table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #1a1a1a;
+.btn-spectate:hover {
+  border-color: var(--ink);
+  color: var(--ink);
 }
-.troop-num {
+
+/* ── Spectate page: extra styles ──────────────── */
+.city-table td:nth-child(3),
+.faction-table td:nth-child(2),
+.faction-table td:nth-child(3) {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.ink-dim { color: var(--ink-dim); }
+
+/* Remove old slot styles that conflict */
+.slot-detail, .slot-label, .slot-ip, .slot-dc,
+.slot-not-ready, .slot-ready, .slot-actions, .debug-section {
+  /* overridden by new v2 styles above */
+}

@@ -281,6 +281,10 @@ def get_lobby_status(session: Session) -> dict:
                     info["online_sec"] = int(ago)
             info["ip"] = (s.occupied_by_ip or "")[:8] + "***"
 
+        elif status == "ai_managed":
+            info["agent_display_name"] = s.agent_display_name or f"托管AI-{faction}"
+            info["ip"] = (s.occupied_by_ip or "")[:8] + "***"
+
         elif status == "disconnected":
             if s.last_heartbeat_at:
                 last = datetime.fromisoformat(s.last_heartbeat_at)
@@ -360,6 +364,157 @@ def get_lobby_status(session: Session) -> dict:
         "events": events[-5:] if events else [],
         "diplomacy": diplomacy[-3:] if diplomacy else [],
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# AI assignment / release
+# ═══════════════════════════════════════════════════════════════
+
+
+def assign_ai_slot(session: Session, faction: str, ip: str) -> dict:
+    """Assign a managed AI to an open slot. Only allowed before countdown starts."""
+    game = get_active_game(session)
+
+    if faction not in FACTION_POOL:
+        raise ValueError(f"无效势力: {faction}")
+    if game.status not in ("lobby", "countdown", None):
+        raise ValueError("对局已开始，无法配 AI")
+    if game.status == "countdown":
+        raise ValueError("倒计时已启动，无法配 AI")
+
+    slot = session.exec(
+        select(Slot).where(Slot.game_id == game.id, Slot.faction == faction)
+    ).first()
+    if slot is None:
+        slot = Slot(game_id=game.id, faction=faction, status="open")
+        session.add(slot)
+        session.flush()
+
+    if slot.status == "occupied":
+        raise ValueError(f"势力 [{faction}] 已被玩家占用")
+    if slot.status == "ai_managed":
+        return {"status": "already_assigned", "game_id": game.id, "faction": faction}
+
+    # Mark slot as AI-managed
+    slot.status = "ai_managed"
+    slot.session_token = None
+    slot.ready = True  # AI auto-ready
+    slot.ready_at = _now()
+    slot.joined_at = _now()
+    slot.last_heartbeat_at = _now()
+    slot.occupied_by_ip = ip
+    slot.agent_display_name = f"托管AI-{faction}"
+    session.add(slot)
+
+    # Ensure managed agent exists
+    eng._ensure_managed_for_open_slots(session, game.id)
+
+    session.commit()
+
+    # Check if all slots are now occupied/ready → trigger countdown
+    _check_all_ready(session, game.id)
+
+    return {"status": "assigned", "game_id": game.id, "faction": faction}
+
+
+def release_ai_slot(session: Session, faction: str, token: str | None = None) -> dict:
+    """Release an AI-managed slot back to open state. Player can also release their own slot."""
+    game = get_active_game(session)
+
+    if faction not in FACTION_POOL:
+        raise ValueError(f"无效势力: {faction}")
+    if game.status not in ("lobby", "countdown", None):
+        raise ValueError("对局已开始，无法释放")
+    if game.status == "countdown":
+        raise ValueError("倒计时已启动，无法释放")
+
+    slot = session.exec(
+        select(Slot).where(Slot.game_id == game.id, Slot.faction == faction)
+    ).first()
+    if slot is None:
+        raise ValueError("槽位不存在")
+
+    # Player releasing their own slot
+    if slot.status == "occupied" and token:
+        sess = session.get(SessionModel, token)
+        if sess is None or slot.session_token != token:
+            raise ValueError("无权释放该槽位")
+        _release_player_slot(session, game, slot, faction)
+        session.commit()
+        return {"status": "released", "game_id": game.id, "faction": faction}
+
+    # Releasing AI slot
+    if slot.status == "ai_managed":
+        slot.status = "open"
+        slot.session_token = None
+        slot.ready = False
+        slot.ready_at = None
+        slot.agent_display_name = None
+        session.add(slot)
+
+        _release_managed_agent(session, game, faction)
+        session.commit()
+        return {"status": "released", "game_id": game.id, "faction": faction}
+
+    raise ValueError("槽位状态不支持释放")
+
+
+def _release_managed_agent(session: Session, game: Game, faction: str):
+    """Deactivate managed AI agents for a faction."""
+    from .config import ENABLE_MANAGED_AI
+    if not ENABLE_MANAGED_AI:
+        return
+    default_names = [eng.MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL]
+    agents = session.exec(
+        select(Agent).where(
+            Agent.game_id == game.id,
+            Agent.faction == faction,
+            Agent.is_active == True,
+        )
+    ).all()
+    for a in agents:
+        if a.agent_name in default_names:
+            a.is_active = False
+            a.deactivated_at = _now()
+            a.deactivated_reason = "ai_released"
+            session.add(a)
+
+
+def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str):
+    """Release a player-occupied slot."""
+    slot.status = "open"
+    slot.session_token = None
+    slot.ready = False
+    slot.ready_at = None
+    slot.agent_display_name = None
+    session.add(slot)
+
+    # Deactivate player's session
+    if slot.session_token:
+        sess = session.get(SessionModel, slot.session_token)
+        if sess:
+            sess.status = "kicked"
+            session.add(sess)
+
+    _release_managed_agent(session, game, faction)
+
+
+def _check_all_ready(session: Session, game_id: int):
+    """If all occupied/AI slots are ready, trigger countdown."""
+    from .config import COUNTDOWN_SEC
+    slots = session.exec(select(Slot).where(Slot.game_id == game_id)).all()
+    occupied_slots = [s for s in slots if s.status in ("occupied", "ai_managed")]
+    if len(occupied_slots) == 0:
+        return
+    if all(s.ready for s in occupied_slots):
+        game = session.get(Game, game_id)
+        if game and game.status in ("lobby", "countdown", None):
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=COUNTDOWN_SEC)
+            game.status = "countdown"
+            game.countdown_started_at = _now()
+            game.countdown_deadline = deadline.isoformat()
+            session.add(game)
+            session.commit()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -509,6 +664,10 @@ def join_slot(
             "expires_at": _now(),
         }
 
+    # ── COUNTDOWN guard ────────────────────────────────────
+    if game.status == "countdown":
+        raise ValueError("COUNTDOWN_STARTED")
+
     # ── Find the slot ──────────────────────────────────────
     slot = session.exec(
         select(Slot).where(Slot.game_id == game.id, Slot.faction == faction)
@@ -521,6 +680,15 @@ def join_slot(
         )
         session.add(slot)
         session.flush()
+
+    # ── AI-grab: joining an AI-managed slot → AI vacates ────
+    if slot.status == "ai_managed" and game.status in ("lobby", "countdown", None):
+        _release_managed_agent(session, game, faction)
+        slot.status = "open"
+        slot.session_token = None
+        slot.ready = False
+        session.add(slot)
+        session.commit()
 
     # ── Check slot availability (before IP check) ──────────
     if slot.status == "occupied":

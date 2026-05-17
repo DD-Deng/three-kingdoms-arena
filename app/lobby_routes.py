@@ -118,6 +118,11 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
             raise HTTPException(status_code=409, detail=detail)
         if "同一 IP" in detail:
             raise HTTPException(status_code=429, detail=detail)
+        if "倒计时" in detail or "COUNTDOWN" in detail:
+            return JSONResponse(
+                status_code=409,
+                content={"error_code": "COUNTDOWN_STARTED", "detail": detail, "retry_safe": True},
+            )
         if "对局已开始" in detail:
             raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
@@ -192,6 +197,55 @@ def lobby_unready(body: dict, session: Session = Depends(get_session)):
             raise HTTPException(status_code=409, detail=detail)
         if "观战" in detail:
             raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+
+# ═══════════════════════════════════════════════════════════════
+# AI assignment (managed AI slot management)
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.post("/lobby/assign-ai")
+def lobby_assign_ai(body: dict, request: Request, session: Session = Depends(get_session)):
+    """Assign a managed AI to fill an open slot."""
+    faction = body.get("faction")
+    if not faction or faction not in ("蜀", "魏", "吴"):
+        raise HTTPException(status_code=400, detail="faction must be 蜀/魏/吴")
+
+    ip = _get_ip(request)
+    try:
+        return lobby.assign_ai_slot(session, faction, ip)
+    except ValueError as e:
+        detail = str(e)
+        if "已开始" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "已被占用" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "倒计时" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+
+@router.post("/lobby/release-ai")
+def lobby_release_ai(body: dict, request: Request, session: Session = Depends(get_session)):
+    """Release an AI-managed slot or player's own slot."""
+    faction = body.get("faction")
+    token = body.get("token")
+    if not faction or faction not in ("蜀", "魏", "吴"):
+        raise HTTPException(status_code=400, detail="faction must be 蜀/魏/吴")
+
+    try:
+        return lobby.release_ai_slot(session, faction, token)
+    except ValueError as e:
+        detail = str(e)
+        if "已开始" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "无权" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        if "倒计时" in detail:
+            raise HTTPException(status_code=409, detail=detail)
+        if "不支持" in detail:
+            raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
 
 
