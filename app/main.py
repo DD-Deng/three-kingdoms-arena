@@ -1022,6 +1022,13 @@ def game_replay(game_id: int, session: Session = Depends(get_session)):
 _v2_dist = Path(__file__).parent.parent / "frontend-v2" / "dist"
 
 
+# Redirect /lobby → /v2/lobby (new default)
+@app.get("/lobby")
+def lobby_redirect():
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/v2/lobby")
+
+
 @app.get("/v2/{path:path}")
 async def v2_spa(path: str):
     file_path = _v2_dist / path
