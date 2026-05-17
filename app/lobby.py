@@ -363,6 +363,7 @@ def get_lobby_status(session: Session) -> dict:
         ],
         "events": events[-5:] if events else [],
         "diplomacy": diplomacy[-3:] if diplomacy else [],
+        "chapters": json.loads(game.chapters) if game.chapters else [],
     }
 
 

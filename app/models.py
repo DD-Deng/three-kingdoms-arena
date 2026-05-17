@@ -77,6 +77,9 @@ class Game(SQLModel, table=True):
     countdown_started_at: Optional[str] = Field(default=None)
     countdown_deadline: Optional[str] = Field(default=None)
 
+    # Incremental narrative chapters (v0.8 — every 5 ticks)
+    chapters: Optional[str] = Field(default=None)  # JSON array of chapter objects
+
 
 # ═══════════════════════════════════════════════════════════════
 # Slot —— 阵营槽位（每局 3 个，先到先得）

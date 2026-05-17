@@ -267,6 +267,92 @@ function EventFeed({ events }) {
   )
 }
 
+// ── Narrative panel ─────────────────────────────
+function NarrativePanel({ chapters }) {
+  const [locked, setLocked] = useState(false)
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    if (!locked && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chapters, locked])
+
+  const displayChapters = chapters || []
+
+  return (
+    <div className="panel narrative-panel">
+      <div className="event-feed-header">
+        <span>评书叙事</span>
+        <button className={`btn-lock ${locked ? 'locked' : ''}`}
+          onClick={() => setLocked(!locked)}>
+          {locked ? '已锁定' : '自动滚动'}
+        </button>
+      </div>
+      <div className="event-feed-body" style={{ maxHeight: 360 }}>
+        {displayChapters.length === 0 && (
+          <div className="narrative-placeholder">评书正在生成…</div>
+        )}
+        {displayChapters.map((ch, i) => (
+          <div key={i} className="narrative-chapter">
+            <div className="narrative-chapter-tick">
+              Tick {ch.tick_start}-{ch.tick_end}
+            </div>
+            <div className="narrative-chapter-text">{ch.content}</div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  )
+}
+
+// ── Win rate curve ──────────────────────────────
+function WinRateCurve({ history }) {
+  const h = history || []
+  if (h.length < 2) return null
+
+  const W = 280, H = 80, pad = { top: 8, right: 8, bottom: 16, left: 8 }
+  const iw = W - pad.left - pad.right
+  const ih = H - pad.top - pad.bottom
+
+  function linePath(faction) {
+    if (h.length < 1) return ''
+    const points = h.map((pt, i) => {
+      const x = pad.left + (i / Math.max(h.length - 1, 1)) * iw
+      const total = (pt.蜀 || 1) + (pt.魏 || 1) + (pt.吴 || 1)
+      const ratio = (pt[faction] || 0) / total
+      const y = pad.top + (1 - ratio) * ih
+      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+    })
+    return points.join(' ')
+  }
+
+  return (
+    <div className="panel winrate-panel">
+      <div className="panel-title">胜率曲线</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="winrate-svg">
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(r => (
+          <line key={r} x1={pad.left} y1={pad.top + r * ih}
+            x2={W - pad.right} y2={pad.top + r * ih}
+            stroke="var(--line)" strokeWidth={0.5} />
+        ))}
+        {FACTIONS.map(f => (
+          <path key={f} d={linePath(f)} fill="none"
+            stroke={FACTION_COLORS[f]} strokeWidth={1.5}
+            strokeLinejoin="round" />
+        ))}
+      </svg>
+      <div className="winrate-legend">
+        {FACTIONS.map(f => (
+          <span key={f} style={{ color: FACTION_COLORS[f] }}>━ {f}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Tick progress bar ───────────────────────────
 function TickBar({ tick, maxTicks }) {
   const pct = maxTicks ? Math.round((tick / maxTicks) * 100) : 0
@@ -285,12 +371,35 @@ export default function SpectateV2() {
   const [params] = useSearchParams()
   const gameId = params.get('game')
 
-  // Use lobby status for active game + events + cities
+  // Use lobby status for active game + events + cities + chapters
   const url = '/v1/lobby/status'
   const { data, error, loading } = usePolling(url, 3000)
 
-  // Also fetch current-game for agents/factions detail
+  // Also fetch current-game for agents detail
   const { data: cgData } = usePolling('/current-game', 5000)
+
+  // Accumulate power history for win rate curve
+  const [powerHistory, setPowerHistory] = useState([])
+  const lastTickRef = useRef(-1)
+
+  useEffect(() => {
+    if (!data?.cities) return
+    const tick = data.tick
+    if (tick === lastTickRef.current) return
+    lastTickRef.current = tick
+
+    const factions = computeFactions(data.cities)
+    const power = {}
+    for (const f of FACTIONS) {
+      // Power = cities * 3 + troops * 0.001 + grain * 0.0005
+      power[f] = (factions[f]?.cities || 0) * 3 + (factions[f]?.troops || 0) * 0.001
+    }
+    setPowerHistory(prev => {
+      const next = [...prev, { tick, ...power }]
+      // Keep last 50 data points
+      return next.slice(-50)
+    })
+  }, [data?.tick, data?.cities])
 
   if (loading && !data) {
     return <div className="page"><p>加载中…</p></div>
@@ -304,6 +413,7 @@ export default function SpectateV2() {
     tick: data?.tick,
     cities: data?.cities?.map(c => `${c.name}:${c.owner ?? '中立'}:${c.troops}`),
     events_count: data?.events?.length,
+    chapters_count: data?.chapters?.length,
   })
 
   const tick = data?.tick ?? 0
@@ -311,6 +421,7 @@ export default function SpectateV2() {
   const status = data?.status ?? '?'
   const cities = data?.cities || []
   const events = data?.events || []
+  const chapters = data?.chapters || []
   const agents = cgData?.agents || []
 
   return (
@@ -340,16 +451,14 @@ export default function SpectateV2() {
 
           {/* Faction cards */}
           <FactionCards cities={cities} agents={agents} />
+
+          {/* Win rate curve */}
+          <WinRateCurve history={powerHistory} />
         </div>
 
         <div className="spectate-right">
-          {/* Narrative placeholder (Phase 5) */}
-          <div className="panel narrative-panel">
-            <div className="panel-title">评书叙事</div>
-            <div className="narrative-placeholder">
-              评书正在生成…
-            </div>
-          </div>
+          {/* Narrative stream */}
+          <NarrativePanel chapters={chapters} />
         </div>
       </div>
 
