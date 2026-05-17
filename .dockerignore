@@ -1,0 +1,15 @@
+frontend-v2/dist/
+frontend-v2/node_modules/
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+.pytest_cache/
+.venv/
+logs/
+*.log
+.git/
+.env
+.vscode/
+.DS_Store
+arena.db

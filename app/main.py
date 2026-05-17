@@ -1016,6 +1016,15 @@ def game_replay(game_id: int, session: Session = Depends(get_session)):
 
 
 # ═══════════════════════════════════════════════════════════════
+# V2 Frontend (Vite + React SPA, served at /v2/)
+# ═══════════════════════════════════════════════════════════════
+
+v2_dist = Path(__file__).parent.parent / "frontend-v2" / "dist"
+if v2_dist.is_dir():
+    app.mount("/v2", StaticFiles(directory=str(v2_dist), html=True), name="frontend-v2")
+
+
+# ═══════════════════════════════════════════════════════════════
 # 静态资源回退 — 服务 SPA 的 CSS/JSX 等文件
 # ═══════════════════════════════════════════════════════════════
 

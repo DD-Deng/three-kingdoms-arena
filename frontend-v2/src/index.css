@@ -1,0 +1,74 @@
+/* ── Reset & base ────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a1a;
+  --panel: #242424;
+  --line: #333;
+  --ink: #e0d8c0;
+  --ink-dim: #888;
+  --ink-mute: #555;
+  --gold: #c8a84e;
+  --gold-dim: #8a7030;
+  --accent: #c4453a;
+  --font-sans: 'Noto Serif SC', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --shu: #c4453a;
+  --wei: #3a6dc4;
+  --wu: #3a9a4a;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── App shell ───────────────────────────────── */
+.app-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.nav-link {
+  color: var(--gold);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 16px;
+}
+.nav-link:hover { color: var(--ink); }
+
+.nav-sub {
+  color: var(--ink-dim);
+  font-size: 12px;
+  margin-left: 8px;
+  font-family: var(--font-mono);
+}
+
+.main-content {
+  min-height: 80vh;
+}
+
+.page {
+  padding: 20px 0;
+}
+.page h1 {
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+.page p {
+  color: var(--ink-dim);
+}
