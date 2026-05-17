@@ -504,11 +504,11 @@ def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str)
 
 
 def _check_all_ready(session: Session, game_id: int):
-    """If all occupied/AI slots are ready, trigger countdown."""
+    """If all 3 slots are occupied/AI and ready, trigger countdown."""
     from .config import COUNTDOWN_SEC
     slots = session.exec(select(Slot).where(Slot.game_id == game_id)).all()
     occupied_slots = [s for s in slots if s.status in ("occupied", "ai_managed")]
-    if len(occupied_slots) == 0:
+    if len(occupied_slots) < 3:
         return
     if all(s.ready for s in occupied_slots):
         game = session.get(Game, game_id)
