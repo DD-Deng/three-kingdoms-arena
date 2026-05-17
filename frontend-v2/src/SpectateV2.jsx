@@ -17,10 +17,9 @@ export default function SpectateV2() {
   const [params] = useSearchParams()
   const gameId = params.get('game')
 
-  // Use current-game endpoint; if gameId is specified, could use /games/{id}/state
-  const url = gameId
-    ? `/current-game`  // public fallback — /games/{id}/state needs auth
-    : '/current-game'
+  // Use current-game endpoint for public game state
+  // Note: may differ from lobby/status game; both are valid views
+  const url = '/current-game'
 
   const { data, error, loading } = usePolling(url, 3000)
 
