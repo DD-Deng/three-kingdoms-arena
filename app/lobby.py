@@ -377,10 +377,12 @@ def assign_ai_slot(session: Session, faction: str, ip: str) -> dict:
 
     if faction not in FACTION_POOL:
         raise ValueError(f"无效势力: {faction}")
-    if game.status not in ("lobby", "countdown", None):
-        raise ValueError("对局已开始，无法配 AI")
+    if game.status in ("finished",):
+        raise ValueError("对局已结束，无法配 AI")
     if game.status == "countdown":
         raise ValueError("倒计时已启动，无法配 AI")
+    if game.status == "active" and game.tick > 0:
+        raise ValueError("对局已开始，无法配 AI")
 
     slot = session.exec(
         select(Slot).where(Slot.game_id == game.id, Slot.faction == faction)
@@ -423,10 +425,12 @@ def release_ai_slot(session: Session, faction: str, token: str | None = None) ->
 
     if faction not in FACTION_POOL:
         raise ValueError(f"无效势力: {faction}")
-    if game.status not in ("lobby", "countdown", None):
-        raise ValueError("对局已开始，无法释放")
+    if game.status in ("finished",):
+        raise ValueError("对局已结束，无法释放")
     if game.status == "countdown":
         raise ValueError("倒计时已启动，无法释放")
+    if game.status == "active" and game.tick > 0:
+        raise ValueError("对局已开始，无法释放")
 
     slot = session.exec(
         select(Slot).where(Slot.game_id == game.id, Slot.faction == faction)
@@ -682,7 +686,9 @@ def join_slot(
         session.flush()
 
     # ── AI-grab: joining an AI-managed slot → AI vacates ────
-    if slot.status == "ai_managed" and game.status in ("lobby", "countdown", None):
+    if slot.status == "ai_managed":
+        if game.status == "countdown":
+            raise ValueError("COUNTDOWN_STARTED")
         _release_managed_agent(session, game, faction)
         slot.status = "open"
         slot.session_token = None
