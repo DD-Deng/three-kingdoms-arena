@@ -1019,9 +1019,23 @@ def game_replay(game_id: int, session: Session = Depends(get_session)):
 # V2 Frontend (Vite + React SPA, served at /v2/)
 # ═══════════════════════════════════════════════════════════════
 
-v2_dist = Path(__file__).parent.parent / "frontend-v2" / "dist"
-if v2_dist.is_dir():
-    app.mount("/v2", StaticFiles(directory=str(v2_dist), html=True), name="frontend-v2")
+_v2_dist = Path(__file__).parent.parent / "frontend-v2" / "dist"
+
+
+@app.get("/v2/{path:path}")
+async def v2_spa(path: str):
+    file_path = _v2_dist / path
+    if file_path.is_file():
+        return FileResponse(file_path)
+    return FileResponse(_v2_dist / "index.html")
+
+
+@app.get("/v2")
+def v2_index():
+    index = _v2_dist / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404)
 
 
 # ═══════════════════════════════════════════════════════════════
