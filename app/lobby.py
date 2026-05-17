@@ -538,7 +538,9 @@ def declare_ready(session: Session, token: str) -> dict:
     game = session.get(Game, sess.game_id)
     if game is None:
         raise ValueError("对局不存在")
-    if game.status not in ("lobby", "countdown"):
+    if game.status in ("finished",):
+        raise ValueError("对局已结束，无法 ready")
+    if game.status == "active" and game.tick > 0:
         raise ValueError("对局已开始，无法 ready")
 
     slot = session.exec(
