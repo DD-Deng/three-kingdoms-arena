@@ -512,7 +512,7 @@ def _check_all_ready(session: Session, game_id: int):
         return
     if all(s.ready for s in occupied_slots):
         game = session.get(Game, game_id)
-        if game and game.status in ("lobby", "countdown", None):
+        if game and (game.status in ("lobby", "countdown", None) or (game.status in ("active", "paused") and game.tick == 0)):
             deadline = datetime.now(timezone.utc) + timedelta(seconds=COUNTDOWN_SEC)
             game.status = "countdown"
             game.countdown_started_at = _now()
@@ -620,11 +620,11 @@ def cancel_ready(session: Session, token: str) -> dict:
 
 
 def _all_occupied_ready(session: Session, game_id: int) -> bool:
-    """Check if all occupied slots have declared ready."""
+    """Check if all occupied/AI-managed slots have declared ready."""
     slots = session.exec(
         select(Slot).where(Slot.game_id == game_id)
     ).all()
-    occupied = [s for s in slots if s.status == "occupied"]
+    occupied = [s for s in slots if s.status in ("occupied", "ai_managed")]
     if len(occupied) < 3:
         return False
     return all(s.ready for s in occupied)
