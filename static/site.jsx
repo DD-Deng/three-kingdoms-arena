@@ -514,7 +514,11 @@ function Site({ theme, defaultTab, defaultLang }) {
   React.useEffect(() => {
     const poll = () => {
       fetchCurrentGame().then(data => {
-        if (data && data.status !== 'error') setCurrentGame(data);
+        if (data && data.status !== 'error') {
+          console.log('[poll] tick=' + (data.tick || '?') + ' status=' + (data.status || '?'));
+          setCurrentGame(data);
+          console.log('[render] new state applied — tick=' + (data.tick || '?') + ' status=' + (data.status || '?'));
+        }
       }).catch(() => {});
     };
     poll();

@@ -319,7 +319,7 @@ function BattleDetail({ lang, battleId, onBack }) {
                   <text y="-15" textAnchor="middle" fontSize="11" fill="var(--ink)" fontFamily="var(--font-sans)" fontWeight="600">
                     {lang === "中" ? c.id : c.en}
                   </text>
-                  <text y="22" textAnchor="middle" fontSize="11" fill={color} fontFamily="var(--font-mono)}>{troops != null ? troops : '?'}</text>
+                  <text y="22" textAnchor="middle" fontSize="11" fill={color} fontFamily="var(--font-mono)">{troops != null ? troops : '?'}</text>
                 </g>
               );
             })}
