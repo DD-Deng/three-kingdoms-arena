@@ -807,56 +807,75 @@ function LobbySection({ lang, currentGame }) {
           <div className="spec-header">
             <span>{lang === '中' ? '🏯 战场态势' : '🏯 Battlefield'}</span>
             <span style={{ fontSize: 11, color: 'var(--ink-dim)' }}>
-              {lang === '中' ? '每 3 秒刷新' : 'Refreshes every 3s'}
+              {g.status === 'active'
+                ? (lang === '中' ? '每 3 秒刷新' : 'Refreshes every 3s')
+                : (lang === '中' ? '等待对局开始…' : 'Waiting for game to start…')}
             </span>
           </div>
 
-          {/* Agent submission status — from /current-game */}
-          {currentGame && currentGame.agents && g.status === 'active' && (
-            <AgentStatusBar agents={currentGame.agents} lang={lang} />
+          {g.status !== 'active' ? (
+            <div style={{
+              textAlign: 'center', padding: '40px 20px', color: 'var(--ink-dim)',
+              fontSize: 14, lineHeight: 1.8,
+            }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+              <div>{lang === '中' ? '对局尚未开始' : 'Game not started yet'}</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>
+                {lang === '中'
+                  ? '需要 3 个势力就位（真人或 AI 托管）并全部 Ready'
+                  : 'All 3 factions must be ready (player or AI-managed)'}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Agent submission status — from /current-game */}
+              {currentGame && currentGame.agents && (
+                <AgentStatusBar agents={currentGame.agents} lang={lang} />
+              )}
+
+              {/* Tick progress bar — from /current-game */}
+              {currentGame && currentGame.tick_started_at && (
+                <TickProgressBar
+                  tickStartedAt={currentGame.tick_started_at}
+                  tickTimeoutSec={currentGame.tick_timeout_sec}
+                  lang={lang}
+                />
+              )}
+
+              <SpectatorMiniMap
+                cities={currentGame && currentGame.cities ? currentGame.cities : g.cities}
+                events={currentGame && currentGame.events ? currentGame.events : (g.events || [])}
+                diplomacy={currentGame && currentGame.diplomacy ? currentGame.diplomacy : (g.diplomacy || [])}
+                tick={tick}
+                lang={lang}
+                onEventClick={(e) => setSelectedEvent(e)}
+              />
+
+              {/* Faction stats — from /current-game if available */}
+              <div className="spec-stats">
+                {['蜀', '魏', '吴'].map((faction) => {
+                  const cgFaction = currentGame && currentGame.factions ? currentGame.factions[faction] : null;
+                  const ownedCities = cgFaction
+                    ? cgFaction.cities
+                    : (g.cities || []).filter(c => c.owner === faction).length;
+                  const totalTroops = cgFaction
+                    ? cgFaction.troops
+                    : (g.cities || []).filter(c => c.owner === faction).reduce((s, c) => s + (c.troops || 0), 0);
+                  const fc = FACTIONS[faction].color;
+                  return (
+                    <div key={faction} className="spec-stat-item">
+                      <b style={{ color: fc }}>{faction}</b>
+                      <span>{ownedCities} {lang === '中' ? '城' : 'c'}</span>
+                      <span>{totalTroops} {lang === '中' ? '兵' : '⚔'}</span>
+                      {cgFaction && cgFaction.alliance_with && (
+                        <span className="spec-alliance">🤝 {cgFaction.alliance_with}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
-
-          {/* Tick progress bar — from /current-game */}
-          {g.status === 'active' && currentGame && currentGame.tick_started_at && (
-            <TickProgressBar
-              tickStartedAt={currentGame.tick_started_at}
-              tickTimeoutSec={currentGame.tick_timeout_sec}
-              lang={lang}
-            />
-          )}
-
-          <SpectatorMiniMap
-            cities={currentGame && currentGame.cities ? currentGame.cities : g.cities}
-            events={currentGame && currentGame.events ? currentGame.events : (g.events || [])}
-            diplomacy={currentGame && currentGame.diplomacy ? currentGame.diplomacy : (g.diplomacy || [])}
-            tick={tick}
-            lang={lang}
-            onEventClick={(e) => setSelectedEvent(e)}
-          />
-
-          {/* Faction stats — from /current-game if available */}
-          <div className="spec-stats">
-            {['蜀', '魏', '吴'].map((faction) => {
-              const cgFaction = currentGame && currentGame.factions ? currentGame.factions[faction] : null;
-              const ownedCities = cgFaction
-                ? cgFaction.cities
-                : (g.cities || []).filter(c => c.owner === faction).length;
-              const totalTroops = cgFaction
-                ? cgFaction.troops
-                : (g.cities || []).filter(c => c.owner === faction).reduce((s, c) => s + (c.troops || 0), 0);
-              const fc = FACTIONS[faction].color;
-              return (
-                <div key={faction} className="spec-stat-item">
-                  <b style={{ color: fc }}>{faction}</b>
-                  <span>{ownedCities} {lang === '中' ? '城' : 'c'}</span>
-                  <span>{totalTroops} {lang === '中' ? '兵' : '⚔'}</span>
-                  {cgFaction && cgFaction.alliance_with && (
-                    <span className="spec-alliance">🤝 {cgFaction.alliance_with}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
 

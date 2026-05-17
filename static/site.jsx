@@ -515,9 +515,9 @@ function Site({ theme, defaultTab, defaultLang }) {
     const poll = () => {
       fetchCurrentGame().then(data => {
         if (data && data.status !== 'error') {
-          console.log('[poll] tick=' + (data.tick || '?') + ' status=' + (data.status || '?'));
+          console.log('[poll] tick=' + (data.tick ?? '?') + ' status=' + (data.status ?? '?'));
           setCurrentGame(data);
-          console.log('[render] new state applied — tick=' + (data.tick || '?') + ' status=' + (data.status || '?'));
+          console.log('[render] new state applied — tick=' + (data.tick ?? '?') + ' status=' + (data.status ?? '?'));
         }
       }).catch(() => {});
     };
