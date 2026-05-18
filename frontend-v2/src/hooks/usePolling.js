@@ -1,37 +1,47 @@
 import { useState, useEffect, useRef } from 'react'
+import { request } from '../api'
 
 export default function usePolling(url, intervalMs = 3000) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
-  const mountedRef = useRef(true)
+  const seqRef = useRef(0)
 
   useEffect(() => {
-    mountedRef.current = true
+    // null interval → stop polling, keep existing state
+    if (intervalMs == null) {
+      setLoading(false)
+      return
+    }
+
+    let mounted = true
+    let timer = null
 
     async function fetchData() {
+      const seq = ++seqRef.current
+
       try {
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
-        if (mountedRef.current) {
+        const json = await request(url)
+        if (mounted && seq === seqRef.current) {
           setData(json)
           setError(null)
           setLoading(false)
         }
       } catch (e) {
-        if (mountedRef.current) {
+        if (e.name === 'AbortError') return
+        if (mounted && seq === seqRef.current) {
           setError(e.message)
           setLoading(false)
         }
       }
     }
 
+    setLoading(true)
     fetchData()
-    const timer = setInterval(fetchData, intervalMs)
+    timer = setInterval(fetchData, intervalMs)
 
     return () => {
-      mountedRef.current = false
+      mounted = false
       clearInterval(timer)
     }
   }, [url, intervalMs])

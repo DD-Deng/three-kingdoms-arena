@@ -1,14 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import usePolling from './hooks/usePolling'
-
-const FACTIONS = ['蜀', '魏', '吴']
-const FACTION_COLORS = {
-  蜀: 'var(--shu)',
-  魏: 'var(--wei)',
-  吴: 'var(--wu)',
-}
-const FACTION_MONARCHS = { 蜀: '刘备', 魏: '曹操', 吴: '孙权' }
+import { api } from './api'
+import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS } from './constants'
 
 // ── Slot status → display ──────────────────────────
 function slotUI(slot, faction, gameStatus) {
@@ -107,10 +101,22 @@ function CountdownOverlay({ deadline }) {
 // ── Main component ─────────────────────────────────
 export default function LobbyV2() {
   const navigate = useNavigate()
-  const { data, error, loading } = usePolling('/v1/lobby/status', 3000)
+  const [pollInterval, setPollInterval] = useState(3000)
+  const { data, error, loading } = usePolling('/v1/lobby/status', pollInterval)
   const [localSlots, setLocalSlots] = useState(null)
   const [msg, setMsg] = useState(null)
   const msgTimer = useRef(null)
+  const pendingRef = useRef(null) // { faction, check: (slot) => boolean, until: number }
+
+  // Adapt polling interval to game status
+  useEffect(() => {
+    if (!data?.status) return
+    const next = data.status === 'finished' ? null
+      : data.status === 'countdown' ? 1000
+      : data.status === 'lobby' ? 5000
+      : 3000
+    setPollInterval(prev => prev === next ? prev : next)
+  }, [data?.status])
 
   // Merge polling data with optimistic local updates
   const slots = localSlots || data?.slots
@@ -120,9 +126,19 @@ export default function LobbyV2() {
   const maxTicks = data?.max_ticks
   const countdownDeadline = data?.countdown_deadline
 
-  // Clear local overrides when server data changes
+  // Smart reconciliation: only clear optimistic state when server confirms or timeout
   useEffect(() => {
-    setLocalSlots(null)
+    const pending = pendingRef.current
+    if (!pending) { setLocalSlots(null); return }
+
+    const serverSlot = data?.slots?.[pending.faction]
+    if (serverSlot && pending.check(serverSlot)) {
+      setLocalSlots(null)
+      pendingRef.current = null
+    } else if (Date.now() > pending.until) {
+      setLocalSlots(null)
+      pendingRef.current = null
+    }
   }, [data?.slots])
 
   function flash(msgText) {
@@ -139,108 +155,85 @@ export default function LobbyV2() {
     console.error('LobbyV2 fetch error:', error)
   }
 
-  console.log('LobbyV2 poll:', {
-    game_id: gameId,
-    status: gameStatus,
-    tick,
-    slot_states: slots,
-  })
+  function _revertSlot(faction) {
+    setLocalSlots(prev => {
+      if (!prev) return prev
+      const next = { ...prev }
+      delete next[faction]
+      return next
+    })
+  }
 
   // ── Actions ─────────────────────────────────────
   async function actJoin(faction) {
     flash(null)
+    pendingRef.current = { faction, check: s => s.status === 'occupied', until: Date.now() + 5000 }
+    setLocalSlots(prev => ({
+      ...(prev || slots),
+      [faction]: { status: 'occupied', ready: false, agent_display_name: '你', ip: '***' },
+    }))
     try {
-      const res = await fetch('/v1/lobby/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ faction }),
-      })
-      const body = await res.json()
-      if (!res.ok) {
-        if (body.error_code === 'COUNTDOWN_STARTED') {
-          flash('倒计时已启动，无法加入')
-        } else {
-          flash(`加入失败: ${body.detail || body.error_code}`)
-        }
-        return
-      }
-      // Optimistic update
-      setLocalSlots(prev => ({
-        ...(prev || slots),
-        [faction]: { status: 'occupied', ready: false, agent_display_name: '你', ip: '***' },
-      }))
+      await api.joinLobby(faction)
       flash(`已加入 ${faction}`)
     } catch (e) {
-      flash(`网络错误: ${e.message}`)
+      _revertSlot(faction)
+      pendingRef.current = null
+      if (e.code === 'COUNTDOWN_STARTED') {
+        flash('倒计时已启动，无法加入')
+      } else {
+        flash(`加入失败: ${e.message}`)
+      }
     }
   }
 
   async function actAssignAI(faction) {
     flash(null)
+    pendingRef.current = { faction, check: s => s.status === 'ai_managed', until: Date.now() + 5000 }
+    setLocalSlots(prev => ({
+      ...(prev || slots),
+      [faction]: { status: 'ai_managed', ready: true, agent_display_name: `托管AI-${faction}` },
+    }))
     try {
-      const res = await fetch('/v1/lobby/assign-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ faction }),
-      })
-      const body = await res.json()
-      if (!res.ok) {
-        flash(`配 AI 失败: ${body.detail}`)
-        return
-      }
-      setLocalSlots(prev => ({
-        ...(prev || slots),
-        [faction]: { status: 'ai_managed', ready: true, agent_display_name: `托管AI-${faction}` },
-      }))
+      await api.assignAI(faction)
       flash(`已配 ${faction} 为 AI 托管`)
     } catch (e) {
-      flash(`网络错误: ${e.message}`)
+      _revertSlot(faction)
+      pendingRef.current = null
+      flash(`配 AI 失败: ${e.message}`)
     }
   }
 
   async function actReleaseAI(faction) {
     flash(null)
+    pendingRef.current = { faction, check: s => s.status === 'open', until: Date.now() + 5000 }
+    setLocalSlots(prev => ({
+      ...(prev || slots),
+      [faction]: { status: 'open', ready: false },
+    }))
     try {
-      const res = await fetch('/v1/lobby/release-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ faction }),
-      })
-      const body = await res.json()
-      if (!res.ok) {
-        flash(`释放失败: ${body.detail}`)
-        return
-      }
-      setLocalSlots(prev => ({
-        ...(prev || slots),
-        [faction]: { status: 'open', ready: false },
-      }))
+      await api.releaseAI(faction)
       flash(`已释放 ${faction} AI 托管`)
     } catch (e) {
-      flash(`网络错误: ${e.message}`)
+      _revertSlot(faction)
+      pendingRef.current = null
+      flash(`释放失败: ${e.message}`)
     }
   }
 
   async function actReady(faction, token) {
     flash(null)
+    pendingRef.current = { faction, check: s => s.ready === true, until: Date.now() + 5000 }
+    setLocalSlots(prev => ({
+      ...(prev || slots),
+      [faction]: { ...((prev || slots)[faction]), ready: true },
+    }))
     try {
-      const res = await fetch('/v1/lobby/ready', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      })
-      if (!res.ok) {
-        const body = await res.json()
-        flash(`Ready 失败: ${body.detail}`)
-        return
-      }
-      setLocalSlots(prev => ({
-        ...(prev || slots),
-        [faction]: { ...((prev || slots)[faction]), ready: true },
-      }))
+      await api.ready(token)
       flash('已就绪')
     } catch (e) {
-      flash(`网络错误: ${e.message}`)
+      _revertSlot(faction)
+      pendingRef.current = null
+      flash(`Ready 失败: ${e.message}`)
     }
   }
 

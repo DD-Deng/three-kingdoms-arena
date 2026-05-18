@@ -1,29 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import usePolling from './hooks/usePolling'
-
-const FACTIONS = ['蜀', '魏', '吴']
-const FACTION_COLORS = { 蜀: '#c4453a', 魏: '#3a6dc4', 吴: '#3a9a4a' }
-const FACTION_MONARCHS = { 蜀: '刘备', 魏: '曹操', 吴: '孙权' }
-
-// ── City map layout (SVG viewBox 300x260) ──────
-const CITY_POSITIONS = {
-  洛阳: { x: 170, y: 20 },
-  长安: { x: 40, y: 85 },
-  邺城: { x: 260, y: 25 },
-  宛城: { x: 150, y: 110 },
-  襄阳: { x: 245, y: 170 },
-  成都: { x: 40, y: 210 },
-  建业: { x: 260, y: 215 },
-}
-
-const ADJACENCY = [
-  ['洛阳', '长安'], ['洛阳', '宛城'], ['洛阳', '邺城'],
-  ['长安', '宛城'], ['长安', '成都'],
-  ['邺城', '宛城'],
-  ['宛城', '襄阳'],
-  ['襄阳', '成都'], ['襄阳', '建业'],
-]
+import { api } from './api'
+import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, CITY_POSITIONS, ADJACENCY } from './constants'
 
 // ── Compute faction summary from cities ─────────
 function computeFactions(cities) {
@@ -371,12 +350,20 @@ export default function SpectateV2() {
   const [params] = useSearchParams()
   const gameId = params.get('game')
 
-  // Use lobby status for active game + events + cities + chapters
-  const url = '/v1/lobby/status'
-  const { data, error, loading } = usePolling(url, 3000)
+  const [pollInterval, setPollInterval] = useState(3000)
+  const { data, error, loading } = usePolling('/v1/lobby/status', pollInterval)
 
-  // Also fetch current-game for agents detail
-  const { data: cgData } = usePolling('/current-game', 5000)
+  // Adapt polling interval to game status
+  useEffect(() => {
+    if (!data?.status) return
+    const next = data.status === 'finished' ? null
+      : data.status === 'countdown' ? 1000
+      : 3000
+    setPollInterval(prev => prev === next ? prev : next)
+  }, [data?.status])
+
+  // Agent details change slowly — poll at 10s
+  const { data: cgData } = usePolling('/current-game', 10000)
 
   // Accumulate power history for win rate curve
   const [powerHistory, setPowerHistory] = useState([])
@@ -406,15 +393,6 @@ export default function SpectateV2() {
   }
 
   if (error) console.error('SpectateV2 fetch error:', error)
-
-  console.log('SpectateV2 poll:', {
-    game_id: data?.game_id,
-    status: data?.status,
-    tick: data?.tick,
-    cities: data?.cities?.map(c => `${c.name}:${c.owner ?? '中立'}:${c.troops}`),
-    events_count: data?.events?.length,
-    chapters_count: data?.chapters?.length,
-  })
 
   const tick = data?.tick ?? 0
   const maxTicks = data?.max_ticks ?? 50
