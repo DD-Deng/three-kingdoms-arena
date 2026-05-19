@@ -253,7 +253,7 @@ html, body {
   font-size: 13px;
   padding: 2px 10px;
 }
-.status-active, .status-in_progress { color: var(--wu); }
+.status-active { color: var(--wu); }
 .status-paused { color: var(--accent); }
 .status-countdown { color: var(--gold); }
 .status-finished { color: var(--ink-dim); }

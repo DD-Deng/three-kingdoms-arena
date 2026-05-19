@@ -29,3 +29,11 @@ export const ADJACENCY = [
   ['宛城', '襄阳'],
   ['襄阳', '成都'], ['襄阳', '建业'],
 ]
+
+// ── Status checks ───────────────────────────────
+// Backend only uses "active" — there is no "in_progress".
+// All progress checks must go through this function to avoid scattered conditionals.
+
+export function isGameInProgress(status) {
+  return status === 'active'
+}

@@ -3008,6 +3008,7 @@ def current_game_state(session: Session) -> dict:
         "intentions": intentions,
         "agents": agent_info,
         "factions": factions_summary,
+        "chapters": json.loads(game.chapters) if game.chapters else [],
         "max_ticks": game.max_ticks,
     }
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import usePolling from './hooks/usePolling'
 import { api } from './api'
-import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS } from './constants'
+import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, isGameInProgress } from './constants'
 
 // ── Slot status → display ──────────────────────────
 function slotUI(slot, faction, gameStatus) {
@@ -10,7 +10,7 @@ function slotUI(slot, faction, gameStatus) {
   const ready = slot?.ready || false
 
   // Countdown / in-progress → locked
-  if (gameStatus === 'countdown' || gameStatus === 'active' || gameStatus === 'in_progress') {
+  if (gameStatus === 'countdown' || isGameInProgress(gameStatus)) {
     return {
       label: gameStatus === 'countdown' ? '倒计时中' : '对局中',
       cssClass: 'locked',
@@ -102,7 +102,7 @@ function CountdownOverlay({ deadline }) {
 export default function LobbyV2() {
   const navigate = useNavigate()
   const [pollInterval, setPollInterval] = useState(3000)
-  const { data, error, loading } = usePolling('/v1/lobby/status', pollInterval)
+  const { data, error, isLoading } = usePolling('/v1/lobby/status', { intervalMs: pollInterval })
   const [localSlots, setLocalSlots] = useState(null)
   const [msg, setMsg] = useState(null)
   const msgTimer = useRef(null)
@@ -147,7 +147,7 @@ export default function LobbyV2() {
     msgTimer.current = setTimeout(() => setMsg(null), 5000)
   }
 
-  if (loading && !data) {
+  if (isLoading && !data) {
     return <div className="page"><p>加载中…</p></div>
   }
 

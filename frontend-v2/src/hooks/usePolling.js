@@ -1,16 +1,18 @@
+// Polling hook — fetches immediately, then every intervalMs.
+// Uses request sequencing to prevent stale responses from overwriting fresh ones.
+
 import { useState, useEffect, useRef } from 'react'
 import { request } from '../api'
 
-export default function usePolling(url, intervalMs = 3000) {
+export default function usePolling(url, { intervalMs = 3000, enabled = true } = {}) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const seqRef = useRef(0)
 
   useEffect(() => {
-    // null interval → stop polling, keep existing state
-    if (intervalMs == null) {
-      setLoading(false)
+    if (!enabled) {
+      setIsLoading(false)
       return
     }
 
@@ -25,18 +27,20 @@ export default function usePolling(url, intervalMs = 3000) {
         if (mounted && seq === seqRef.current) {
           setData(json)
           setError(null)
-          setLoading(false)
+          setIsLoading(false)
+          // Schema-verified field names: tick, status (always present)
+          console.log('[poll]', { tick: json.tick, status: json.status })
         }
       } catch (e) {
         if (e.name === 'AbortError') return
         if (mounted && seq === seqRef.current) {
           setError(e.message)
-          setLoading(false)
+          setIsLoading(false)
         }
       }
     }
 
-    setLoading(true)
+    setIsLoading(true)
     fetchData()
     timer = setInterval(fetchData, intervalMs)
 
@@ -44,7 +48,7 @@ export default function usePolling(url, intervalMs = 3000) {
       mounted = false
       clearInterval(timer)
     }
-  }, [url, intervalMs])
+  }, [url, intervalMs, enabled])
 
-  return { data, error, loading }
+  return { data, error, isLoading }
 }

@@ -351,7 +351,7 @@ export default function SpectateV2() {
   const gameId = params.get('game')
 
   const [pollInterval, setPollInterval] = useState(3000)
-  const { data, error, loading } = usePolling('/v1/lobby/status', pollInterval)
+  const { data, error, isLoading } = usePolling('/v1/lobby/status', { intervalMs: pollInterval })
 
   // Adapt polling interval to game status
   useEffect(() => {
@@ -363,7 +363,7 @@ export default function SpectateV2() {
   }, [data?.status])
 
   // Agent details change slowly — poll at 10s
-  const { data: cgData } = usePolling('/current-game', 10000)
+  const { data: cgData } = usePolling('/current-game', { intervalMs: 10000 })
 
   // Accumulate power history for win rate curve
   const [powerHistory, setPowerHistory] = useState([])
@@ -388,7 +388,7 @@ export default function SpectateV2() {
     })
   }, [data?.tick, data?.cities])
 
-  if (loading && !data) {
+  if (isLoading && !data) {
     return <div className="page"><p>加载中…</p></div>
   }
 
