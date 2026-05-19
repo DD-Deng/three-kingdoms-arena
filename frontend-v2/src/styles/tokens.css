@@ -261,7 +261,7 @@ a { color: inherit; }
 /* ── 1. Hero (centered) ────────────────────────── */
 .home-hero {
   text-align: center;
-  margin-bottom: 64px;
+  margin-bottom: 32px;
 }
 
 .home-hero-eyebrow {
@@ -269,7 +269,7 @@ a { color: inherit; }
   font-size: var(--fs-mono);
   letter-spacing: 3px;
   color: var(--ink-mute);
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   text-transform: uppercase;
 }
 
@@ -280,6 +280,15 @@ a { color: inherit; }
   letter-spacing: 1px;
   color: var(--ink);
   margin-bottom: 16px;
+}
+/* Smaller hero for merged home+lobby */
+.home-hero-h1-sm {
+  font-size: var(--fs-h1);
+  line-height: 1.18;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--ink);
+  margin-bottom: 12px;
 }
 
 .home-hero-sub {
