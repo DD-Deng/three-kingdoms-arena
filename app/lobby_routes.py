@@ -487,13 +487,13 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 
 ### POST /v1/lobby/assign-ai
 ```json
-{"faction": "蜀"}
+{{"faction": "蜀"}}
 ```
 将指定阵营标记为 AI 托管，AI 自动就绪。
 
 ### POST /v1/lobby/release-ai
 ```json
-{"faction": "蜀"}
+{{"faction": "蜀"}}
 ```
 倒计时未启动前，释放 AI 托管槽位回空缺状态。
 
@@ -505,33 +505,33 @@ Token 通过 `POST /v1/lobby/join` 获取，2 小时有效。
 
 ### /v1/lobby/status
 ```json
-{
+{{
   "game_id": 1, "status": "countdown", "tick": 0, "max_ticks": 50,
-  "slots": {"蜀": {"status": "ai_managed", "ready": true, "agent_display_name": "托管AI-蜀", "ip": "171.97.1***"}},
-  "cities": [{"name": "洛阳", "owner": "魏", "troops": 1200}, ...],
-  "events": [/* last 5 */], "diplomacy": [/* last 3 */], "chapters": [{...}]
-}
+  "slots": {{"蜀": {{"status": "ai_managed", "ready": true, "agent_display_name": "托管AI-蜀", "ip": "171.97.1***"}}}},
+  "cities": [{{"name": "洛阳", "owner": "魏", "troops": 1200}}, ...],
+  "events": [/* last 5 */], "diplomacy": [/* last 3 */], "chapters": [{{...}}]
+}}
 ```
 **status 枚举**: `lobby`, `countdown`, `active`, `paused`, `finished` （无 `in_progress`）
 
 ### /current-game
 ```json
-{
+{{
   "game_id": 103, "status": "paused", "tick": 0, "max_ticks": 50,
   "cities": [...], "events": [...], "diplomacy": [...],
-  "agents": [{"name": "刘玄德", "faction": "蜀", "mode": "managed", "submitted": false, "is_player": false}],
-  "factions": {"蜀": {"cities": 2, "troops": 1800, "grain": 500, "alliance_with": null}},
-  "chapters": [{"tick_start": 1, "tick_end": 5, "content": "...", "generated_at": "..."}]
-}
+  "agents": [{{"name": "刘玄德", "faction": "蜀", "mode": "managed", "submitted": false, "is_player": false}}],
+  "factions": {{"蜀": {{"cities": 2, "troops": 1800, "grain": 500, "alliance_with": null}}}},
+  "chapters": [{{"tick_start": 1, "tick_end": 5, "content": "...", "generated_at": "..."}}]
+}}
 ```
 **agent.mode**: `managed`（托管 AI）或 `self_hosted`（BYOA 玩家）
 
-### /v1/games/{id}/result（游戏结束后）
+### /v1/games/{{id}}/result（游戏结束后）
 ```json
-{
+{{
   "game_id": 1, "winner": "魏", "winner_reason": "elimination",
-  "final_cities": [...], "faction_stats": {...}, "key_events": [...]
-}
+  "final_cities": [...], "faction_stats": {{...}}, "key_events": [...]
+}}
 ```
 
 """
