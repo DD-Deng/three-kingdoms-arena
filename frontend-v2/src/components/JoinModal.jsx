@@ -17,6 +17,15 @@ function saveSession(faction, data) {
   localStorage.setItem(LS_KEY, JSON.stringify(sessions))
 }
 
+// Cache instruction text in localStorage so re-open doesn't need fetch
+function saveInstructionToLocal(faction, text) {
+  const sessions = loadSessions()
+  if (sessions[faction]) {
+    sessions[faction].instruction = text
+    localStorage.setItem(LS_KEY, JSON.stringify(sessions))
+  }
+}
+
 function getSession(faction) {
   return loadSessions()[faction] || null
 }
@@ -82,17 +91,20 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
   const monarch = FACTION_MONARCHS[faction]
   // result.token matches localStorage saveSession; result.session_token matches fresh join API response
   const tokenValue = result?.session_token || result?.token
+  const savedInstruction = result?.instruction
 
-  // Auto-fetch instruction when opening from localStorage (preResult has token but no instruction)
+  function cacheInstruction(text) { saveInstructionToLocal(faction, text) }
+
+  // Auto-fetch or use cached instruction
   useEffect(() => {
     if (phase !== 'done' || !result || instruction) return
+    if (savedInstruction) { setInstruction(savedInstruction); return }
     if (!tokenValue) return
     let cancelled = false
     fetch(`/v1/lobby/instruction?token=${encodeURIComponent(tokenValue)}`)
       .then(async r => {
         const text = await r.text()
         if (!r.ok) {
-          // Try to extract error detail from JSON; fall back to status text
           try { const err = JSON.parse(text); return { error: err.detail || `HTTP ${r.status}` } }
           catch { return { error: `HTTP ${r.status}` } }
         }
@@ -101,11 +113,11 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
       .then(result => {
         if (cancelled) return
         if (result.error) setInstruction(`__ERROR__${result.error}`)
-        else setInstruction(result.text)
+        else { setInstruction(result.text); cacheInstruction(result.text) }
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [phase, result, instruction, tokenValue])
+  }, [phase, result, instruction, tokenValue, savedInstruction])
 
   // Auto-join on confirm
   useEffect(() => {
@@ -141,6 +153,7 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
           const text = await resp.text()
           if (!cancelled) {
             setInstruction(text)
+            saveInstructionToLocal(faction, text)
             setPhase('done')
           }
         } catch {
