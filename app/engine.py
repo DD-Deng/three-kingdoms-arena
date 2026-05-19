@@ -1647,16 +1647,21 @@ def tick(session: Session, game_id: int):
 
 
 def _maybe_generate_chapter(session: Session, game_id: int):
-    """Every 5 ticks, compile combat narratives into an incremental chapter."""
+    """Every 5 ticks, generate an incremental chapter via narrator.
+
+    Tries LLM first (with short timeout), falls back to template assembly.
+    LLM failures are logged but never block the game.
+    """
     game = session.get(Game, game_id)
     if game is None or game.tick % 5 != 0 or game.tick == 0:
         return
 
     from datetime import datetime, timezone
+    from app.narrator import generate_chapter
+
     tick_start = game.tick - 4
     tick_end = game.tick
 
-    # Collect dayan narratives from combat events this tick
     events = []
     if game.last_tick_events:
         try:
@@ -1664,34 +1669,16 @@ def _maybe_generate_chapter(session: Session, game_id: int):
         except Exception:
             pass
 
-    narratives = []
-    for evt in events:
-        narrative = evt.get("dayan_narrative", "")
-        if narrative:
-            narratives.append(narrative)
-        elif evt.get("result") == "captured":
-            cap = evt.get("captured_by", "?")
-            city = evt.get("city", "?")
-            narratives.append(f"第{game.tick}回合：{cap}攻占{city}。")
+    diplomacy = []
+    if game.last_tick_diplomacy:
+        try:
+            diplomacy = json.loads(game.last_tick_diplomacy)
+        except Exception:
+            pass
 
-    # Build chapter content
-    content_parts = []
-    if narratives:
-        content_parts.append(f"第{tick_start}-{tick_end}回合战况：\n")
-        for i, n in enumerate(narratives):
-            content_parts.append(f"\n---\n\n{n}")
-    else:
-        # Generate summary from city state
-        cities = session.exec(select(City).where(City.game_id == game_id)).all()
-        city_lines = []
-        for c in cities:
-            owner = c.owner or "中立"
-            city_lines.append(f"  {c.name}：{owner} {c.troops}兵")
-        content_parts.append(f"第{tick_start}-{tick_end}回合：局势稳定，各方按兵不动。\n\n各城现状：\n" + "\n".join(city_lines))
+    cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    city_data = [{"name": c.name, "owner": c.owner, "troops": c.troops} for c in cities]
 
-    content = "".join(content_parts)
-
-    # Load existing chapters
     chapters = []
     if game.chapters:
         try:
@@ -1699,15 +1686,13 @@ def _maybe_generate_chapter(session: Session, game_id: int):
         except Exception:
             pass
 
-    chapters.append({
-        "tick_start": tick_start,
-        "tick_end": tick_end,
-        "content": content,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    })
+    # Generate (LLM with timeout → fallback on failure)
+    chapter = generate_chapter(tick_start, tick_end, events, city_data, diplomacy)
+    chapters.append(chapter)
 
     game.chapters = json.dumps(chapters, ensure_ascii=False)
     session.add(game)
+    session.commit()
     session.commit()
 
 
