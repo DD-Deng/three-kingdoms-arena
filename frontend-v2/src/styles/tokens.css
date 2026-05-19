@@ -247,31 +247,33 @@ a { color: inherit; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Home page — hero + game overview + slot cards
+   Home page — single-column, center-aligned, vertical stacking
    ═══════════════════════════════════════════════════════════════ */
+
+.home {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 80px 0 80px;
+}
 
 .home-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
 
-/* ── Hero grid ─────────────────────────────────── */
-.hero {
-  display: grid;
-  grid-template-columns: 1fr 1.05fr;
-  gap: 48px;
-  align-items: center;
-  padding-bottom: 60px;
-  border-bottom: 1px solid var(--line);
+/* ── 1. Hero (centered) ────────────────────────── */
+.home-hero {
+  text-align: center;
+  margin-bottom: 70px;
 }
 
-.hero-eyebrow {
+.home-hero-eyebrow {
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   letter-spacing: 3px;
   color: var(--ink-mute);
-  margin-bottom: 18px;
+  margin-bottom: 28px;
   text-transform: uppercase;
 }
 
-.hero-h1 {
+.home-hero-h1 {
   font-size: var(--fs-hero);
   line-height: 1.18;
   font-weight: 700;
@@ -280,27 +282,26 @@ a { color: inherit; }
   margin-bottom: 18px;
 }
 
-.hero-sub {
+.home-hero-sub {
   font-size: 15px;
   color: var(--ink-dim);
   line-height: 1.75;
-  max-width: 480px;
-  margin-bottom: 28px;
 }
 
-/* ── Game overview bar ─────────────────────────── */
-.game-overview {
+/* ── 2. Game overview bar ──────────────────────── */
+.home-overview {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 16px 20px;
+  height: 66px;
   background: var(--panel);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   color: var(--ink-mute);
   letter-spacing: 1px;
-  margin-bottom: 20px;
+  margin-bottom: 44px;
 }
 
 .go-gameid { color: var(--ink); font-weight: 600; }
@@ -318,21 +319,21 @@ a { color: inherit; }
 .badge-green { color: var(--wu); }
 .badge-mute { color: var(--ink-mute); }
 
-/* ── Slot cards ────────────────────────────────── */
+/* ── 3. Slot cards (3-col grid) ────────────────── */
 .home-slots {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  margin-bottom: 44px;
 }
 
 .home-slot-card {
-  flex: 1;
   background: var(--panel);
   border: 1px solid;
-  padding: 20px;
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .hsc-top {
@@ -379,6 +380,13 @@ a { color: inherit; }
 .hsc-btn {
   width: 100%;
   text-align: center;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/* ── 4. Spectate-only button ───────────────────── */
+.home-spectate {
+  text-align: center;
 }
 
 /* ── Buttons ────────────────────────────────────── */
@@ -415,8 +423,3 @@ a { color: inherit; }
 }
 
 .btn-ghost:hover { border-color: var(--ink-dim); color: var(--ink); }
-
-/* ── Home spectate-only ─────────────────────────── */
-.home-spectate {
-  text-align: center;
-}

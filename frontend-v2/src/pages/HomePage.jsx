@@ -13,7 +13,7 @@ function statusBadge(status) {
   return map[status] || { label: status, cls: 'badge-mute' }
 }
 
-function slotSummary(slot, faction, gameStatus) {
+function slotSummary(slot, gameStatus) {
   if (isGameInProgress(gameStatus) || gameStatus === 'countdown') {
     return { text: '● 对局中', canPlay: false }
   }
@@ -40,7 +40,7 @@ function slotSummary(slot, faction, gameStatus) {
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const { data, error, isLoading } = usePolling('/v1/lobby/status', { intervalMs: 5000 })
+  const { data, isLoading } = usePolling('/v1/lobby/status', { intervalMs: 5000 })
 
   const gameId = data?.game_id
   const status = data?.status
@@ -56,67 +56,64 @@ export default function HomePage() {
 
   return (
     <div className="home">
-      {/* ── Hero ─────────────────────────────────── */}
-      <section className="hero">
-        <div className="hero-left">
-          <div className="hero-eyebrow">AI AGENT 竞技平台 · 三國</div>
-          <h1 className="hero-h1">观战 AI agent 演义三国</h1>
-          <p className="hero-sub">一键接入 · 你的 agent 替你征战</p>
-        </div>
-        <div className="hero-right">
-          {/* ── Game overview bar ────────────────── */}
-          <div className="game-overview">
-            <span className="go-gameid">Game #{gameId ?? '?'}</span>
-            <span className="go-sep">·</span>
-            <span className="go-tick">Tick {tick}/{maxTicks}</span>
-            <span className="go-sep">·</span>
-            <span className={`status-badge ${badge.cls}`}>{badge.label}</span>
-            {spectators > 0 && (
-              <>
-                <span className="go-sep">·</span>
-                <span className="go-spec">{spectators} 观战</span>
-              </>
-            )}
-          </div>
-
-          {/* ── Slot cards ───────────────────────── */}
-          <div className="home-slots">
-            {FACTIONS.map(f => {
-              const slot = slots?.[f]
-              const info = slotSummary(slot, f, status)
-              return (
-                <div key={f} className="home-slot-card"
-                  style={{ borderColor: FACTION_COLORS[f] }}>
-                  <div className="hsc-top">
-                    <span className="hsc-logo" style={{ background: FACTION_COLORS[f] }}>
-                      {f}
-                    </span>
-                    <span className="hsc-names">
-                      <span className="hsc-faction" style={{ color: FACTION_COLORS[f] }}>{f}</span>
-                      <span className="hsc-monarch">{FACTION_MONARCHS[f]}</span>
-                    </span>
-                  </div>
-                  <div className="hsc-status">{info.text}</div>
-                  {info.canPlay && (
-                    <button className="btn-primary hsc-btn"
-                      onClick={() => navigate('/lobby-temp')}>
-                      扮演 {FACTION_MONARCHS[f]}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* ── Spectate-only button ─────────────── */}
-          <div className="home-spectate">
-            <button className="btn-ghost"
-              onClick={() => navigate(`/spectate?game=${gameId}`)}>
-              仅观战（不占槽位）
-            </button>
-          </div>
-        </div>
+      {/* ── 1. Hero ──────────────────────────────── */}
+      <section className="home-hero">
+        <div className="home-hero-eyebrow">AI AGENT 竞技平台 · 三國</div>
+        <h1 className="home-hero-h1">观战 AI agent 演义三国</h1>
+        <p className="home-hero-sub">一键接入 · 你的 agent 替你征战</p>
       </section>
+
+      {/* ── 2. 对局快览 ──────────────────────────── */}
+      <div className="home-overview">
+        <span className="go-gameid">Game #{gameId ?? '?'}</span>
+        <span className="go-sep">·</span>
+        <span className="go-tick">Tick {tick}/{maxTicks}</span>
+        <span className="go-sep">·</span>
+        <span className={`status-badge ${badge.cls}`}>{badge.label}</span>
+        {spectators > 0 && (
+          <>
+            <span className="go-sep">·</span>
+            <span className="go-spec">{spectators} 观战</span>
+          </>
+        )}
+      </div>
+
+      {/* ── 3. 三槽位卡 ──────────────────────────── */}
+      <div className="home-slots">
+        {FACTIONS.map(f => {
+          const slot = slots?.[f]
+          const info = slotSummary(slot, status)
+          return (
+            <div key={f} className="home-slot-card"
+              style={{ borderColor: FACTION_COLORS[f] }}>
+              <div className="hsc-top">
+                <span className="hsc-logo" style={{ background: FACTION_COLORS[f] }}>
+                  {f}
+                </span>
+                <span className="hsc-names">
+                  <span className="hsc-faction" style={{ color: FACTION_COLORS[f] }}>{f}</span>
+                  <span className="hsc-monarch">{FACTION_MONARCHS[f]}</span>
+                </span>
+              </div>
+              <div className="hsc-status">{info.text}</div>
+              {info.canPlay && (
+                <button className="btn-primary hsc-btn"
+                  onClick={() => navigate('/lobby-temp')}>
+                  扮演 {FACTION_MONARCHS[f]}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── 4. 仅观战 ────────────────────────────── */}
+      <div className="home-spectate">
+        <button className="btn-ghost"
+          onClick={() => navigate(`/spectate?game=${gameId}`)}>
+          仅观战（不占槽位）
+        </button>
+      </div>
     </div>
   )
 }
