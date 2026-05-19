@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import usePolling from '../hooks/usePolling'
 import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, isGameInProgress } from '../constants'
+import JoinModal from '../components/JoinModal'
 
 function statusBadge(status) {
   const map = {
@@ -41,6 +43,7 @@ function slotSummary(slot, gameStatus) {
 export default function HomePage() {
   const navigate = useNavigate()
   const { data, isLoading } = usePolling('/v1/lobby/status', { intervalMs: 5000 })
+  const [modalFaction, setModalFaction] = useState(null)
 
   const gameId = data?.game_id
   const status = data?.status
@@ -98,7 +101,7 @@ export default function HomePage() {
               <div className="hsc-status">{info.text}</div>
               {info.canPlay && (
                 <button className="btn-primary hsc-btn"
-                  onClick={() => navigate('/lobby-temp')}>
+                  onClick={() => setModalFaction(f)}>
                   扮演 {FACTION_MONARCHS[f]}
                 </button>
               )}
@@ -114,6 +117,15 @@ export default function HomePage() {
           仅观战（不占槽位）
         </button>
       </div>
+
+      {/* ── Join modal ──────────────────────────── */}
+      {modalFaction && (
+        <JoinModal
+          faction={modalFaction}
+          gameId={gameId}
+          onClose={() => setModalFaction(null)}
+        />
+      )}
     </div>
   )
 }

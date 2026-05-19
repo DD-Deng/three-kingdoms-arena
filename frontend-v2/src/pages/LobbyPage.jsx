@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import usePolling from '../hooks/usePolling'
 import { api } from '../api'
 import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, isGameInProgress } from '../constants'
+import JoinModal, { getSession } from '../components/JoinModal'
 
 // ── Helpers ────────────────────────────────────────
 function fmtDuration(sec) {
@@ -110,6 +111,8 @@ export default function LobbyPage() {
   const [msg, setMsg] = useState(null)
   const msgTimer = useRef(null)
   const pendingRef = useRef(null)
+  const [modalFaction, setModalFaction] = useState(null)
+  const [modalPhase, setModalPhase] = useState(null) // 'confirm' or 'done' for re-open
 
   useEffect(() => {
     if (!data?.status) return
@@ -252,10 +255,10 @@ export default function LobbyPage() {
                     <button className="lb-btn lb-btn-ai" onClick={() => actAssignAI(f)}>配 AI 托管</button>
                   )}
                   {ui.actions?.includes('join') && (
-                    <button className="lb-btn lb-btn-join" onClick={() => actJoin(f)}>加入 {f}</button>
+                    <button className="lb-btn lb-btn-join" onClick={() => { setModalPhase('confirm'); setModalFaction(f) }}>加入 {f}</button>
                   )}
                   {ui.actions?.includes('grab') && (
-                    <button className="lb-btn lb-btn-grab" onClick={() => actJoin(f)}>抢占 {f}</button>
+                    <button className="lb-btn lb-btn-grab" onClick={() => { setModalPhase('confirm'); setModalFaction(f) }}>抢占 {f}</button>
                   )}
                   {ui.actions?.includes('release_ai') && (
                     <button className="lb-btn lb-btn-release" onClick={() => actReleaseAI(f)}>释放 AI</button>
@@ -263,6 +266,16 @@ export default function LobbyPage() {
                   {ui.actions?.includes('ready') && (
                     <span className="lb-s-need-ready">等待 Ready</span>
                   )}
+                </div>
+              )}
+
+              {/* Saved session: "查看接入指令" button */}
+              {getSession(f) && getSession(f).game_id === gameId && (
+                <div style={{ marginTop: 8 }}>
+                  <button className="lb-btn lb-btn-ai"
+                    onClick={() => { setModalPhase('done'); setModalFaction(f) }}>
+                    📋 查看我的接入指令
+                  </button>
                 </div>
               )}
 
@@ -285,6 +298,16 @@ export default function LobbyPage() {
           仅观战（不占槽位）
         </button>
       </div>
+
+      {/* ── Join modal ──────────────────────────── */}
+      {modalFaction && (
+        <JoinModal
+          faction={modalFaction}
+          gameId={gameId}
+          onClose={() => { setModalFaction(null); setModalPhase(null) }}
+          initialPhase={modalPhase || 'confirm'}
+        />
+      )}
     </div>
   )
 }

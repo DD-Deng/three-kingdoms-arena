@@ -532,3 +532,133 @@ a { color: inherit; }
 
 /* ── Footer ───────────────────────────────────── */
 .lb-footer { text-align: center; margin-top: 8px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Join modal — instruction dialog
+   ═══════════════════════════════════════════════════════════════ */
+
+.jm-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.jm-box {
+  background: var(--panel);
+  max-width: 720px; width: 100%; max-height: 90vh;
+  overflow-y: auto; position: relative;
+  border: 1px solid var(--line);
+}
+.jm-close {
+  position: absolute; top: 12px; right: 14px;
+  background: none; border: none; cursor: pointer;
+  font-size: 20px; color: var(--ink-mute); line-height: 1;
+}
+.jm-close:hover { color: var(--ink); }
+.jm-body { padding: 36px 40px; }
+.jm-center { text-align: center; padding: 60px 40px; }
+
+/* Icons */
+.jm-icon { font-size: 40px; margin-bottom: 12px; }
+.jm-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; letter-spacing: 1px; }
+.jm-hint { font-size: var(--fs-body); color: var(--ink-dim); line-height: 1.7; }
+.jm-error-text { color: var(--accent); font-size: var(--fs-body); margin-top: 8px; }
+.jm-loading-text { color: var(--ink-dim); margin-top: 16px; }
+
+/* Spinner */
+.jm-spinner {
+  display: inline-block; width: 32px; height: 32px;
+  border: 3px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%; animation: jm-spin 0.6s linear infinite;
+}
+@keyframes jm-spin { to { transform: rotate(360deg); } }
+
+/* Actions */
+.jm-actions {
+  display: flex; align-items: center; gap: 12px; margin-top: 24px;
+}
+.jm-copy-btn { padding: 8px 16px; font-size: var(--fs-sm); }
+
+/* Done phase */
+.jm-done-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.jm-done-check { color: var(--wu); font-size: 24px; font-weight: 700; }
+.jm-done-sub { font-size: var(--fs-sm); color: var(--ink-mute); margin-bottom: 20px; }
+
+/* Token card */
+.jm-token-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  padding: 14px 16px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.jm-token-label {
+  font-family: var(--font-mono); font-size: var(--fs-mono);
+  color: var(--ink-mute); letter-spacing: 1px; white-space: nowrap;
+}
+.jm-token-value {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--ink); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Instruction section */
+.jm-instruction-section { margin-bottom: 8px; }
+.jm-inst-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; border-bottom: 1px solid var(--line-2);
+}
+.jm-inst-title { font-size: var(--fs-h3); font-weight: 600; }
+.jm-inst-toggle {
+  background: none; border: 1px solid var(--line); cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-mono);
+  color: var(--ink-dim); padding: 4px 10px;
+  margin-right: auto;
+}
+.jm-inst-toggle:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+.jm-inst-body {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-top: none; padding: 20px 24px; max-height: 360px;
+  overflow-y: auto;
+}
+.jm-inst-body h1 { font-size: 20px; margin: 16px 0 8px; }
+.jm-inst-body h2 { font-size: 16px; margin: 14px 0 6px; }
+.jm-inst-body h3 { font-size: 14px; margin: 12px 0 4px; }
+.jm-inst-body p { font-size: var(--fs-nav); color: var(--ink-dim); line-height: 1.7; margin-bottom: 8px; }
+.jm-inst-body code {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  background: var(--bg); padding: 2px 6px; color: var(--accent);
+}
+.jm-inst-body pre {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  background: var(--bg); padding: 12px 14px; overflow-x: auto;
+  line-height: 1.6; margin: 8px 0; color: var(--ink);
+}
+.jm-inst-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: var(--fs-nav); }
+.jm-inst-body th, .jm-inst-body td { padding: 6px 10px; border: 1px solid var(--line); text-align: left; }
+.jm-inst-body th { background: var(--panel); font-family: var(--font-mono); font-size: var(--fs-mono); }
+.jm-inst-body blockquote {
+  border-left: 3px solid var(--accent); padding: 4px 12px;
+  margin: 8px 0; color: var(--ink-dim); font-size: var(--fs-nav);
+}
+.jm-inst-body hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+.jm-inst-body ul, .jm-inst-body ol { padding-left: 20px; margin: 8px 0; font-size: var(--fs-nav); color: var(--ink-dim); }
+
+.jm-inst-error {
+  color: var(--accent); font-size: var(--fs-nav); padding: 12px 0;
+}
+.jm-inst-error code {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  background: var(--bg); padding: 2px 6px; color: var(--ink);
+}
+
+.jm-footer-hint { font-size: var(--fs-sm); color: var(--ink-mute); }
+
+/* Copied button state */
+.btn-copied {
+  display: inline-block; font-family: var(--font-sans);
+  font-size: var(--fs-nav); letter-spacing: 1px;
+  padding: 11px 22px; cursor: pointer;
+  border-radius: var(--radius);
+  background: var(--wu); color: #fff; border: 1px solid var(--wu);
+  font-weight: 600;
+}
