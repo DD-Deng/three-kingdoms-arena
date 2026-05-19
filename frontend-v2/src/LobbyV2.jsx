@@ -249,6 +249,7 @@ export default function LobbyV2() {
 
   // ── Render ───────────────────────────────────────
   return (
+    <div className="theme-dark" style={{ minHeight: '100vh' }}>
     <div className="page lobby-page">
       {error && (
         <div className="error-banner">Failed to fetch: {error}</div>
@@ -357,6 +358,7 @@ export default function LobbyV2() {
           仅观战（不占槽位）
         </button>
       </div>
+    </div>
     </div>
   )
 }

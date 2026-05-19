@@ -1,7 +1,5 @@
-/* ── Reset & base ────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
+/* ── Dark theme (legacy — LobbyV2 / SpectateV2 until Phase 4-5 migration) */
+.theme-dark {
   --bg: #1a1a1a;
   --panel: #242424;
   --line: #333;
@@ -17,9 +15,7 @@
   --shu: #c4453a;
   --wei: #3a6dc4;
   --wu: #3a9a4a;
-}
 
-html, body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
@@ -27,6 +23,7 @@ html, body {
   line-height: 1.6;
   min-height: 100vh;
 }
+html, body { min-height: 100vh; }
 
 /* ── App shell ───────────────────────────────── */
 .app-shell {

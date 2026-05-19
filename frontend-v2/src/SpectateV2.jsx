@@ -478,6 +478,7 @@ export default function SpectateV2() {
   const factionsData = cgData?.factions
 
   return (
+    <div className="theme-dark" style={{ minHeight: '100vh' }}>
     <div className="page spectate-page">
       {error && <div className="error-banner">Failed to fetch: {error}</div>}
 
@@ -520,6 +521,7 @@ export default function SpectateV2() {
 
       {/* ── Tick progress ─────────────────────── */}
       <TickBar tick={tick} maxTicks={maxTicks} />
+    </div>
     </div>
   )
 }
