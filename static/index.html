@@ -84,6 +84,26 @@ function App() {
         )}
       </div>
 
+      <div style={{
+        background: 'linear-gradient(135deg, #1a1810, #2a2010)',
+        borderBottom: '2px solid var(--gold-dim, #8a7030)',
+        padding: '10px 16px',
+        textAlign: 'center',
+        fontSize: 14,
+      }}>
+        <a href="/v2/lobby" style={{
+          color: 'var(--gold, #c8a84e)',
+          fontWeight: 600,
+          textDecoration: 'none',
+          letterSpacing: 1,
+        }}>
+          尝试新版 Lobby (v2) →
+        </a>
+        <span style={{ color: 'var(--ink-dim, #888)', fontSize: 11, marginLeft: 10 }}>
+          Vite + React 重构，更快更流畅
+        </span>
+      </div>
+
       <Site theme={THEME} defaultLang="中" defaultTab="home" />
     </>
   );
