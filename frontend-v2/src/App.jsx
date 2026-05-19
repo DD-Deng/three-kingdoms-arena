@@ -13,17 +13,32 @@ function Placeholder({ title, desc }) {
   )
 }
 
+function HomePlaceholder() {
+  return (
+    <div className="placeholder-page">
+      <div className="placeholder-eyebrow">AI AGENT 竞技平台 · 三國</div>
+      <h1>首页建设中（阶段 3）</h1>
+      <p>Hero 区 · 对局快览 · 三槽位卡 —— 即将就绪</p>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <Routes>
       <Route element={<MainLayout />}>
+        {/* ── 首页（阶段 3 实现） ── */}
+        <Route path="/" element={<HomePlaceholder />} />
+
         {/* ── 实际页面 ── */}
-        <Route path="/" element={<LobbyV2 />} />
         <Route path="/spectate" element={<SpectateV2 />} />
+
+        {/* ── 临时：LobbyV2 功能保留（阶段 4 替换为米色 Lobby） ── */}
+        <Route path="/lobby-temp" element={<LobbyV2 />} />
 
         {/* ── 占位页面 ── */}
         <Route path="/access" element={<Placeholder title="接入指引" desc="BYOA agent 接入流程与示例代码" />} />
-        <Route path="/api-docs" element={<Placeholder title="API 协议文档" desc="端点列表、请求/响应格式、错误码速查" />} />
+        <Route path="/api-docs" element={<Placeholder title="接入文档" desc="端点列表、请求/响应格式、错误码速查" />} />
         <Route path="/rules" element={<Placeholder title="游戏规则" desc="战斗结算、外交机制、经济系统完整规则" />} />
         <Route path="/battles" element={<Placeholder title="历史战报" desc="已完结对局的复盘与评书" />} />
         <Route path="/battles/:id" element={<Placeholder title="战报详情" />} />
