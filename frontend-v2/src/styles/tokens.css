@@ -253,7 +253,7 @@ a { color: inherit; }
 .home {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 80px 0 80px;
+  padding: 24px 0 60px;
 }
 
 .home-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
@@ -261,7 +261,7 @@ a { color: inherit; }
 /* ── 1. Hero (centered) ────────────────────────── */
 .home-hero {
   text-align: center;
-  margin-bottom: 70px;
+  margin-bottom: 64px;
 }
 
 .home-hero-eyebrow {
@@ -269,7 +269,7 @@ a { color: inherit; }
   font-size: var(--fs-mono);
   letter-spacing: 3px;
   color: var(--ink-mute);
-  margin-bottom: 28px;
+  margin-bottom: 32px;
   text-transform: uppercase;
 }
 
@@ -279,7 +279,7 @@ a { color: inherit; }
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--ink);
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .home-hero-sub {
@@ -301,7 +301,7 @@ a { color: inherit; }
   font-size: var(--fs-mono);
   color: var(--ink-mute);
   letter-spacing: 1px;
-  margin-bottom: 44px;
+  margin-bottom: 24px;
 }
 
 .go-gameid { color: var(--ink); font-weight: 600; }
@@ -324,7 +324,7 @@ a { color: inherit; }
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 28px;
-  margin-bottom: 44px;
+  margin-bottom: 40px;
 }
 
 .home-slot-card {
