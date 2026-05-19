@@ -2727,27 +2727,27 @@ PERSONALITY_MODIFIERS = {
 
 
 def get_or_create_current_game(session: Session) -> Game:
-    """Return the current active/waiting PvP game, or create a new one.
+    """Return the current active PvP game (same one the lobby manages).
 
-    The current game is the one with is_current=True, mode=pvp,
-    and status in (waiting, active). If none exists, creates a fresh game
-    with three managed AI agents pre-joined.
+    Uses Game.is_active == True to stay in sync with lobby.get_active_game().
     """
     game = session.exec(
         select(Game).where(
-            Game.is_current == True,
+            Game.is_active == True,
             Game.mode == "pvp",
-            Game.status.in_(["lobby", "countdown", "active"]),
         )
     ).first()
     if game:
         return game
 
-    # Mark all old games as not current
+    # Mark all old games as not active / not current
     old_games = session.exec(
-        select(Game).where(Game.is_current == True)
+        select(Game).where(
+            (Game.is_active == True) | (Game.is_current == True)
+        )
     ).all()
     for g in old_games:
+        g.is_active = False
         g.is_current = False
         session.add(g)
 
