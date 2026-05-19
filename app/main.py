@@ -210,14 +210,13 @@ app.include_router(lobby_router)
 static_dir = Path(__file__).parent.parent / "static"
 
 
-# ── 首页 — 返回 SPA ─────────────────────────────────────
+# ── 首页 — Vite SPA ─────────────────────────────────────
 @app.get("/")
 def root():
-    spa_index = static_dir / "index.html"
-    if spa_index.is_file():
-        return FileResponse(spa_index)
-    from starlette.responses import RedirectResponse
-    return RedirectResponse(url="/public")
+    index = _v2_dist / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404)
 
 
 def _auth(session: Session, game_id: int, token: str) -> Agent:
@@ -1016,43 +1015,51 @@ def game_replay(game_id: int, session: Session = Depends(get_session)):
 
 
 # ═══════════════════════════════════════════════════════════════
-# V2 Frontend (Vite + React SPA, served at /v2/)
+# Vite SPA (only frontend)
 # ═══════════════════════════════════════════════════════════════
 
 _v2_dist = Path(__file__).parent.parent / "frontend-v2" / "dist"
 
 
-# Redirect /lobby → /v2/lobby (new default)
+# Redirect /lobby → / (new default)
 @app.get("/lobby")
 def lobby_redirect():
     from starlette.responses import RedirectResponse
-    return RedirectResponse(url="/v2/lobby")
+    return RedirectResponse(url="/", status_code=301)
+
+
+# ── Legacy /v2/* → 301 to new paths ──────────────────────
+@app.get("/v2/lobby")
+async def redirect_v2_lobby():
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=301)
+
+
+@app.get("/v2/spectate")
+async def redirect_v2_spectate():
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/spectate", status_code=301)
 
 
 @app.get("/v2/{path:path}")
-async def v2_spa(path: str):
+async def redirect_v2_other(path: str):
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=301)
+
+
+@app.get("/v2")
+async def redirect_v2_index():
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=301)
+
+
+# ═══════════════════════════════════════════════════════════════
+# SPA catch-all — must be LAST to avoid hijacking API routes
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/{path:path}")
+async def spa_catch_all(path: str):
     file_path = _v2_dist / path
     if file_path.is_file():
         return FileResponse(file_path)
     return FileResponse(_v2_dist / "index.html")
-
-
-@app.get("/v2")
-def v2_index():
-    index = _v2_dist / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    raise HTTPException(status_code=404)
-
-
-# ═══════════════════════════════════════════════════════════════
-# 静态资源回退 — 服务 SPA 的 CSS/JSX 等文件
-# ═══════════════════════════════════════════════════════════════
-
-@app.get("/{filename:path}")
-async def serve_static(filename: str):
-    """Fallback: serve static files (CSS, JSX, etc.) that don't match any route."""
-    file_path = static_dir / filename
-    if file_path.is_file() and file_path.suffix in (".css", ".jsx", ".js", ".html", ".json", ".png", ".svg", ".ico", ".txt"):
-        return FileResponse(file_path)
-    raise HTTPException(status_code=404)
