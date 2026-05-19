@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Link } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
+import HomePage from './pages/HomePage'
 import LobbyV2 from './LobbyV2'
 import SpectateV2 from './SpectateV2'
 
@@ -13,22 +14,12 @@ function Placeholder({ title, desc }) {
   )
 }
 
-function HomePlaceholder() {
-  return (
-    <div className="placeholder-page">
-      <div className="placeholder-eyebrow">AI AGENT 竞技平台 · 三國</div>
-      <h1>首页建设中（阶段 3）</h1>
-      <p>Hero 区 · 对局快览 · 三槽位卡 —— 即将就绪</p>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <Routes>
       <Route element={<MainLayout />}>
-        {/* ── 首页（阶段 3 实现） ── */}
-        <Route path="/" element={<HomePlaceholder />} />
+        {/* ── 首页 ── */}
+        <Route path="/" element={<HomePage />} />
 
         {/* ── 实际页面 ── */}
         <Route path="/spectate" element={<SpectateV2 />} />

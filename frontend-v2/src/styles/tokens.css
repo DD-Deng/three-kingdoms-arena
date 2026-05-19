@@ -245,3 +245,178 @@ a { color: inherit; }
   max-width: 480px;
   margin: 0 auto;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Home page — hero + game overview + slot cards
+   ═══════════════════════════════════════════════════════════════ */
+
+.home-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
+
+/* ── Hero grid ─────────────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1.05fr;
+  gap: 48px;
+  align-items: center;
+  padding-bottom: 60px;
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 3px;
+  color: var(--ink-mute);
+  margin-bottom: 18px;
+  text-transform: uppercase;
+}
+
+.hero-h1 {
+  font-size: var(--fs-hero);
+  line-height: 1.18;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--ink);
+  margin-bottom: 18px;
+}
+
+.hero-sub {
+  font-size: 15px;
+  color: var(--ink-dim);
+  line-height: 1.75;
+  max-width: 480px;
+  margin-bottom: 28px;
+}
+
+/* ── Game overview bar ─────────────────────────── */
+.game-overview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  color: var(--ink-mute);
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+}
+
+.go-gameid { color: var(--ink); font-weight: 600; }
+.go-tick { color: var(--ink); }
+.go-sep { color: var(--line); }
+.go-spec { color: var(--ink-dim); }
+
+.status-badge {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.badge-red  { color: var(--accent); }
+.badge-green { color: var(--wu); }
+.badge-mute { color: var(--ink-mute); }
+
+/* ── Slot cards ────────────────────────────────── */
+.home-slots {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.home-slot-card {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hsc-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hsc-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: #fbf6ec;
+  font-weight: 700;
+  font-size: 16px;
+  font-family: var(--font-sans);
+  flex-shrink: 0;
+}
+
+.hsc-names {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.hsc-faction {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.hsc-monarch {
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+.hsc-status {
+  font-size: var(--fs-nav);
+  color: var(--ink-dim);
+}
+
+.hsc-btn {
+  width: 100%;
+  text-align: center;
+}
+
+/* ── Buttons ────────────────────────────────────── */
+.btn-primary {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--fs-nav);
+  letter-spacing: 1px;
+  padding: 11px 22px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fbf6ec;
+  border: 1px solid var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform .12s, background .12s;
+}
+
+.btn-primary:hover { transform: translateY(-1px); }
+
+.btn-ghost {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--fs-nav);
+  letter-spacing: 1px;
+  padding: 11px 22px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  transition: border-color .12s, color .12s;
+}
+
+.btn-ghost:hover { border-color: var(--ink-dim); color: var(--ink); }
+
+/* ── Home spectate-only ─────────────────────────── */
+.home-spectate {
+  text-align: center;
+}
