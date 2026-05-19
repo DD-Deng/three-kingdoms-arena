@@ -71,15 +71,27 @@ function formatCountdown(sec) {
 }
 
 // ── Main modal ─────────────────────────────────────
-export default function JoinModal({ faction, gameId, onClose, initialPhase }) {
+export default function JoinModal({ faction, gameId, onClose, initialPhase, preResult }) {
   const [phase, setPhase] = useState(initialPhase || 'confirm')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(preResult || null)
   const [instruction, setInstruction] = useState(null)
   const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState(true)
   const [countdown, setCountdown] = useState(null)
 
   const monarch = FACTION_MONARCHS[faction]
+
+  // Auto-fetch instruction when opening from localStorage (preResult has token but no instruction)
+  useEffect(() => {
+    if (phase !== 'done' || !result || instruction) return
+    if (!result.session_token) return
+    let cancelled = false
+    fetch(`/v1/lobby/instruction?token=${encodeURIComponent(result.session_token)}`)
+      .then(r => r.text())
+      .then(text => { if (!cancelled) setInstruction(text) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [phase, result, instruction])
 
   // Auto-join on confirm
   useEffect(() => {

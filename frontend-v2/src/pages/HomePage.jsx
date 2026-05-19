@@ -99,6 +99,7 @@ export default function HomePage() {
   const pendingRef = useRef(null)
   const [modalFaction, setModalFaction] = useState(null)
   const [modalPhase, setModalPhase] = useState(null)
+  const [savedResult, setSavedResult] = useState(null)
 
   useEffect(() => {
     if (!data?.status) return
@@ -213,7 +214,11 @@ export default function HomePage() {
                 <div className="lb-s-banner">
                   <span>✓ 你已加入 {f} 阵营</span>
                   {remainMin != null && remainMin > 0 && (<span className="lb-s-banner-expire"> · Token 还有 {remainMin} 分钟有效</span>)}
-                  <button className="lb-s-banner-btn" onClick={() => { setModalPhase('done'); setModalFaction(f) }}>📋 查看接入指令</button>
+                  <button className="lb-s-banner-btn" onClick={() => {
+                    setModalPhase('done')
+                    setModalFaction(f)
+                    setSavedResult(saved)  // pass localStorage data as preResult
+                  }}>📋 查看接入指令</button>
                 </div>
               )}
               <div className="lb-s-faction" style={{ color: FACTION_COLORS[f] }}>
@@ -249,8 +254,9 @@ export default function HomePage() {
       {/* ── Join modal ───────────────────────────── */}
       {modalFaction && (
         <JoinModal faction={modalFaction} gameId={gameId}
-          onClose={() => { setModalFaction(null); setModalPhase(null) }}
-          initialPhase={modalPhase || 'confirm'} />
+          onClose={() => { setModalFaction(null); setModalPhase(null); setSavedResult(null) }}
+          initialPhase={modalPhase || 'confirm'}
+          preResult={savedResult} />
       )}
     </div>
   )
