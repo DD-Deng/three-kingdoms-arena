@@ -524,6 +524,14 @@ html, body {
 }
 .event-item:hover { background: #1a1a1a; }
 .event-item.expanded { background: #1a1a1a; }
+.event-item.event-new {
+  background: #2a2510;
+  animation: event-highlight 0.5s ease-out;
+}
+@keyframes event-highlight {
+  0%   { background: #4a3a10; }
+  100% { background: #1a1a1a; }
+}
 .event-summary {
   display: flex;
   gap: 10px;

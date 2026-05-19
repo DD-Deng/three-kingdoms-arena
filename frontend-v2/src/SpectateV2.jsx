@@ -30,21 +30,51 @@ function computeEvalPower(cities) {
   return power
 }
 
+// SVG arrow pattern inspired by Lichess chessground (re-implemented, not copied)
 // ── City map SVG ────────────────────────────────
-function CityMap({ cities, events, prevCitiesRef }) {
+function CityMap({ cities, events }) {
   const [flashes, setFlashes] = useState({})
   const [arrows, setArrows] = useState([])
+  const prevLenRef = useRef(0)
 
-  // Detect captures → flash + arrow
+  // Detect new combat events → flash city + draw arrow from attacker source
   useEffect(() => {
-    if (!events || !events.length) return
-    const latest = events[events.length - 1]
-    if (latest?.type === 'attack' && latest?.city) {
-      const city = latest.city
+    if (!events) return
+    const newEvents = events.slice(prevLenRef.current)
+    prevLenRef.current = events.length
+
+    for (const evt of newEvents) {
+      const city = evt.city
+      if (!city) continue
+      const result = evt.result
+      if (result !== 'captured' && result !== 'defended') continue
+
+      // Flash the attacked city
       setFlashes(prev => ({ ...prev, [city]: true }))
       setTimeout(() => setFlashes(prev => ({ ...prev, [city]: false })), 1200)
+
+      // Infer source city: attacker-owned city adjacent to target
+      const attacker = evt.captured_by || evt.attackers?.[0]
+      if (attacker && cities) {
+        for (const [a, b] of ADJACENCY) {
+          let srcName = null
+          if (a === city) srcName = b
+          else if (b === city) srcName = a
+          if (!srcName) continue
+
+          const srcCity = cities.find(c => c.name === srcName)
+          if (srcCity && srcCity.owner === attacker) {
+            const arrow = { from: srcName, to: city, faction: attacker }
+            setArrows(prev => [...prev, arrow])
+            setTimeout(() => {
+              setArrows(prev => prev.filter(x => x !== arrow))
+            }, 2000)
+            break
+          }
+        }
+      }
     }
-  }, [events])
+  }, [events, cities])
 
   const cityMap = {}
   if (cities) for (const c of cities) cityMap[c.name] = c
@@ -101,6 +131,7 @@ function CityMap({ cities, events, prevCitiesRef }) {
   )
 }
 
+// Three-faction eval bar inspired by Lichess (re-implemented, not copied)
 // ── Eval bar ────────────────────────────────────
 function EvalBar({ cities }) {
   const power = computeEvalPower(cities)
@@ -128,6 +159,7 @@ function EvalBar({ cities }) {
   )
 }
 
+// Player card pattern inspired by Lichess (re-implemented, not copied)
 // ── Faction info cards ──────────────────────────
 function FactionCards({ cities, agents }) {
   const factions = computeFactions(cities)
@@ -173,17 +205,37 @@ function FactionCards({ cities, agents }) {
   )
 }
 
+// Event feed with auto-scroll + new event highlight pattern
+// inspired by Lichess move list (re-implemented, not copied)
 // ── Event feed ──────────────────────────────────
 function EventFeed({ events }) {
   const [expanded, setExpanded] = useState(null)
   const [locked, setLocked] = useState(false)
+  const [newIds, setNewIds] = useState(new Set())
   const bottomRef = useRef(null)
+  const prevLenRef = useRef(0)
 
   useEffect(() => {
     if (!locked && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [events, locked])
+
+  // Highlight new events for 0.5s
+  useEffect(() => {
+    if (!events) return
+    const prevLen = prevLenRef.current
+    prevLenRef.current = events.length
+    if (events.length <= prevLen) return
+
+    const fresh = new Set()
+    for (let i = prevLen; i < events.length; i++) {
+      fresh.add(i)
+    }
+    setNewIds(fresh)
+    const timer = setTimeout(() => setNewIds(new Set()), 500)
+    return () => clearTimeout(timer)
+  }, [events])
 
   const displayEvents = events || []
 
@@ -206,7 +258,7 @@ function EventFeed({ events }) {
           const captured = evt.captured_by
           const defended = evt.defended_by
           return (
-            <div key={i} className={`event-item ${isExpanded ? 'expanded' : ''}`}
+            <div key={i} className={`event-item ${isExpanded ? 'expanded' : ''} ${newIds.has(i) ? 'event-new' : ''}`}
               onClick={() => setExpanded(isExpanded ? null : i)}>
               <div className="event-summary">
                 <span className="event-tick">T{evt.tick ?? '?'}</span>
@@ -246,6 +298,7 @@ function EventFeed({ events }) {
   )
 }
 
+// Narrative stream pattern inspired by Football Manager (re-implemented, not copied)
 // ── Narrative panel ─────────────────────────────
 function NarrativePanel({ chapters }) {
   const [locked, setLocked] = useState(false)
@@ -286,6 +339,7 @@ function NarrativePanel({ chapters }) {
   )
 }
 
+// Win probability curve pattern inspired by AlphaGo broadcast & Lichess (re-implemented, not copied)
 // ── Win rate curve ──────────────────────────────
 function WinRateCurve({ history }) {
   const h = history || []
