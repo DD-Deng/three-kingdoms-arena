@@ -80,18 +80,20 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
   const [countdown, setCountdown] = useState(null)
 
   const monarch = FACTION_MONARCHS[faction]
+  // result.token matches localStorage saveSession; result.session_token matches fresh join API response
+  const tokenValue = result?.session_token || result?.token
 
   // Auto-fetch instruction when opening from localStorage (preResult has token but no instruction)
   useEffect(() => {
     if (phase !== 'done' || !result || instruction) return
-    if (!result.session_token) return
+    if (!tokenValue) return
     let cancelled = false
-    fetch(`/v1/lobby/instruction?token=${encodeURIComponent(result.session_token)}`)
+    fetch(`/v1/lobby/instruction?token=${encodeURIComponent(tokenValue)}`)
       .then(r => r.text())
       .then(text => { if (!cancelled) setInstruction(text) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [phase, result, instruction])
+  }, [phase, result, instruction, tokenValue])
 
   // Auto-join on confirm
   useEffect(() => {
@@ -213,8 +215,8 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
             {/* b) Token card */}
             <div className="jm-token-card">
               <span className="jm-token-label">Session Token</span>
-              <code className="jm-token-value">{result.session_token}</code>
-              <CopyButton text={result.session_token} label="📋 复制 Token" copiedLabel="✓ 已复制" />
+              <code className="jm-token-value">{tokenValue}</code>
+              <CopyButton text={tokenValue} label="📋 复制 Token" copiedLabel="✓ 已复制" />
             </div>
 
             {/* c) Collapsible full instruction */}
@@ -233,7 +235,7 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
                   ) : (
                     <div className="jm-inst-error">
                       指令加载失败，token 已生效，请联系管理员或刷新重试。
-                      <br />Token: <code>{result.session_token}</code>
+                      <br />Token: <code>{tokenValue}</code>
                     </div>
                   )}
                 </div>
