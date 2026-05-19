@@ -213,12 +213,12 @@ function EventFeed({ events }) {
   const [expanded, setExpanded] = useState(null)
   const [locked, setLocked] = useState(false)
   const [newIds, setNewIds] = useState(new Set())
-  const bottomRef = useRef(null)
+  const bodyRef = useRef(null)
   const prevLenRef = useRef(0)
 
   useEffect(() => {
-    if (!locked && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (!locked && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight
     }
   }, [events, locked])
 
@@ -249,7 +249,7 @@ function EventFeed({ events }) {
           {locked ? '已锁定' : '自动滚动'}
         </button>
       </div>
-      <div className="event-feed-body">
+      <div className="event-feed-body" ref={bodyRef}>
         {displayEvents.length === 0 && (
           <div className="event-empty">暂无事件，等待战局推进…</div>
         )}
@@ -293,7 +293,6 @@ function EventFeed({ events }) {
             </div>
           )
         })}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
@@ -303,11 +302,11 @@ function EventFeed({ events }) {
 // ── Narrative panel ─────────────────────────────
 function NarrativePanel({ chapters }) {
   const [locked, setLocked] = useState(false)
-  const bottomRef = useRef(null)
+  const bodyRef = useRef(null)
 
   useEffect(() => {
-    if (!locked && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (!locked && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight
     }
   }, [chapters, locked])
 
@@ -322,7 +321,7 @@ function NarrativePanel({ chapters }) {
           {locked ? '已锁定' : '自动滚动'}
         </button>
       </div>
-      <div className="event-feed-body" style={{ maxHeight: 360 }}>
+      <div className="event-feed-body" style={{ maxHeight: 360 }} ref={bodyRef}>
         {displayChapters.length === 0 && (
           <div className="narrative-placeholder">评书正在生成…</div>
         )}
@@ -334,7 +333,6 @@ function NarrativePanel({ chapters }) {
             <div className="narrative-chapter-text">{ch.content}</div>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
