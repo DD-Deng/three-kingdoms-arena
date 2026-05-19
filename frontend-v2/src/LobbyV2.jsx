@@ -4,6 +4,14 @@ import usePolling from './hooks/usePolling'
 import { api } from './api'
 import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, isGameInProgress } from './constants'
 
+// ── Helpers ────────────────────────────────────────
+function fmtDuration(sec) {
+  if (sec == null || isNaN(sec)) return '?'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return m > 0 ? `${m}m${s}s` : `${s}s`
+}
+
 // ── Slot status → display ──────────────────────────
 function slotUI(slot, faction, gameStatus) {
   const s = slot?.status || 'open'
@@ -65,8 +73,9 @@ function slotUI(slot, faction, gameStatus) {
       return {
         label: '掉线',
         cssClass: 'disconnected',
-        description: `断开 ${slot?.disconnected_sec || '?'}s · 剩余 ${slot?.reconnect_remaining_sec || '?'}s 可重连`,
-        canAct: false,
+        description: `已断开 ${fmtDuration(slot?.disconnected_sec)}`,
+        canAct: true,
+        actions: ['grab'],
       }
     default:
       return { label: s, cssClass: '', description: '', canAct: false }
@@ -122,6 +131,7 @@ export default function LobbyV2() {
   const slots = localSlots || data?.slots
   const gameStatus = data?.status
   const gameId = data?.game_id
+  const winner = data?.winner
   const tick = data?.tick
   const maxTicks = data?.max_ticks
   const countdownDeadline = data?.countdown_deadline
@@ -261,6 +271,19 @@ export default function LobbyV2() {
 
       {msg && <div className="msg-banner">{msg}</div>}
 
+      {/* ── Finished result ─────────────────────── */}
+      {gameStatus === 'finished' && winner && (
+        <div className="finished-banner">
+          胜方: <span style={{ color: FACTION_COLORS[winner] || 'var(--gold)', fontWeight: 700 }}>
+            {winner} · {FACTION_MONARCHS[winner]}
+          </span>
+          {' · '}
+          <a href={`/v2/spectate?game=${gameId}`} style={{ color: 'var(--gold)' }}>
+            查看战报与评书 →
+          </a>
+        </div>
+      )}
+
       {/* ── Countdown overlay ──────────────────── */}
       {gameStatus === 'countdown' && countdownDeadline && (
         <CountdownOverlay deadline={countdownDeadline} />
@@ -317,7 +340,7 @@ export default function LobbyV2() {
               {/* Disconnected slot: show reconnect countdown */}
               {slot?.status === 'disconnected' && slot?.reconnect_remaining_sec > 0 && (
                 <div className="slot-reconnect-info">
-                  该位置玩家掉线，{slot.reconnect_remaining_sec} 秒后自动释放给托管 AI
+                  该位置玩家掉线，{fmtDuration(slot.reconnect_remaining_sec)} 后自动释放给托管 AI（也可立即点击抢占）
                 </div>
               )}
             </div>

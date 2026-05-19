@@ -88,6 +88,18 @@ html, body {
   font-family: var(--font-mono);
   font-size: 13px;
 }
+.finished-banner {
+  background: #1a1810;
+  border: 1px solid var(--gold-dim);
+  color: var(--ink);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  text-align: center;
+}
+.finished-banner a { text-decoration: none; }
+.finished-banner a:hover { text-decoration: underline; }
+
 .msg-banner {
   background: #1a2a1a;
   border: 1px solid var(--wu);
