@@ -89,8 +89,20 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
     if (!tokenValue) return
     let cancelled = false
     fetch(`/v1/lobby/instruction?token=${encodeURIComponent(tokenValue)}`)
-      .then(r => r.text())
-      .then(text => { if (!cancelled) setInstruction(text) })
+      .then(async r => {
+        const text = await r.text()
+        if (!r.ok) {
+          // Try to extract error detail from JSON; fall back to status text
+          try { const err = JSON.parse(text); return { error: err.detail || `HTTP ${r.status}` } }
+          catch { return { error: `HTTP ${r.status}` } }
+        }
+        return { text }
+      })
+      .then(result => {
+        if (cancelled) return
+        if (result.error) setInstruction(`__ERROR__${result.error}`)
+        else setInstruction(result.text)
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [phase, result, instruction, tokenValue])
@@ -230,7 +242,12 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
               </div>
               {!collapsed && (
                 <div className="jm-inst-body">
-                  {instruction ? (
+                  {instruction && instruction.startsWith('__ERROR__') ? (
+                    <div className="jm-inst-error">
+                      {instruction.replace('__ERROR__', '')}
+                      <br />Token: <code>{tokenValue}</code>
+                    </div>
+                  ) : instruction ? (
                     <ReactMarkdown>{instruction}</ReactMarkdown>
                   ) : (
                     <div className="jm-inst-error">
