@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Link } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
+import LobbyPage from './pages/LobbyPage'
 import LobbyV2 from './LobbyV2'
 import SpectateV2 from './SpectateV2'
 
@@ -20,6 +21,9 @@ export default function App() {
       <Route element={<MainLayout />}>
         {/* ── 首页 ── */}
         <Route path="/" element={<HomePage />} />
+
+        {/* ── Lobby（米色） ── */}
+        <Route path="/lobby" element={<LobbyPage />} />
 
         {/* ── 实际页面 ── */}
         <Route path="/spectate" element={<SpectateV2 />} />
