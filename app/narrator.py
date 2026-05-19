@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger("narrator")
 
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 
 def _build_narrator_prompt(tick_start: int, tick_end: int, events: list,
