@@ -2972,6 +2972,7 @@ def current_game_state(session: Session) -> dict:
         factions_summary[f] = {
             "cities": len(owned),
             "troops": troops,
+            "grain": fres.get("grain", 0),
             "alliance_with": fres.get("alliance_with"),
         }
 

@@ -161,7 +161,7 @@ function EvalBar({ cities }) {
 
 // Player card pattern inspired by Lichess (re-implemented, not copied)
 // ── Faction info cards ──────────────────────────
-function FactionCards({ cities, agents }) {
+function FactionCards({ cities, agents, factionsData }) {
   const factions = computeFactions(cities)
   const agentMap = {}
   if (agents) for (const a of agents) agentMap[a.faction] = a
@@ -171,6 +171,7 @@ function FactionCards({ cities, agents }) {
       {FACTIONS.map(f => {
         const fs = factions[f]
         const agent = agentMap[f]
+        const grain = factionsData?.[f]?.grain
         return (
           <div key={f} className="faction-card"
             style={{ borderLeft: `3px solid ${FACTION_COLORS[f]}` }}>
@@ -189,7 +190,7 @@ function FactionCards({ cities, agents }) {
               </div>
               <div className="fc-stat">
                 <span className="fc-label">粮</span>
-                <span className="fc-value ink-dim">—</span>
+                <span className="fc-value">{grain != null ? grain.toLocaleString() : '—'}</span>
               </div>
             </div>
             {agent && (
@@ -455,6 +456,7 @@ export default function SpectateV2() {
   const events = data?.events || []
   const chapters = data?.chapters || []
   const agents = cgData?.agents || []
+  const factionsData = cgData?.factions
 
   return (
     <div className="page spectate-page">
@@ -482,7 +484,7 @@ export default function SpectateV2() {
           <EvalBar cities={cities} />
 
           {/* Faction cards */}
-          <FactionCards cities={cities} agents={agents} />
+          <FactionCards cities={cities} agents={agents} factionsData={factionsData} />
 
           {/* Win rate curve */}
           <WinRateCurve history={powerHistory} />

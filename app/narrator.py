@@ -1,6 +1,6 @@
 """Incremental chapter narrator — generates 150-300 character Chinese commentary every 5 ticks.
 
-LLM-powered when ANTHROPIC_API_KEY or OPENAI_API_KEY is set.
+LLM-powered via DeepSeek when DEEPSEEK_API_KEY is set.
 Falls back to template-based assembly when no key is available.
 Failures never block the game — errors are logged and the fallback content is used."""
 
@@ -10,6 +10,9 @@ import os
 from datetime import datetime, timezone
 
 logger = logging.getLogger("narrator")
+
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
 
 def _build_narrator_prompt(tick_start: int, tick_end: int, events: list,
@@ -84,37 +87,28 @@ def _build_fallback_chapter(tick_start: int, tick_end: int,
 
 
 def _call_llm(prompt: str) -> str | None:
-    """Try to call an LLM. Returns None on any failure."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    """Try to call DeepSeek. Returns None on any failure."""
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         return None
 
     try:
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key, timeout=8.0)
-            model = "claude-sonnet-4-6-20250514"
-            resp = client.messages.create(
-                model=model,
-                max_tokens=400,
-                temperature=0.8,
-                system="你是一位评书先生，用中文写三国风格的战况评书。",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return resp.content[0].text.strip()
-        else:
-            # OpenAI compatible (DeepSeek, GPT, etc.)
-            import openai
-            base_url = os.environ.get("OPENAI_BASE_URL")
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            model = os.environ.get("OPENAI_MODEL", "gpt-4o")
-            resp = client.chat.completions.create(
-                model=model,
-                max_tokens=400,
-                temperature=0.8,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return resp.choices[0].message.content.strip()
+        import openai
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=DEEPSEEK_BASE_URL,
+            timeout=8.0,
+        )
+        resp = client.chat.completions.create(
+            model=DEEPSEEK_MODEL,
+            max_tokens=500,
+            temperature=0.8,
+            messages=[
+                {"role": "system", "content": "你是一位评书先生，用中文写三国风格的战况评书。直接输出评书正文，不要任何前缀。"},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         logger.warning(f"Narrator LLM call failed: {e}")
         return None
