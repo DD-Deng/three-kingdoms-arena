@@ -241,8 +241,29 @@ export default function LobbyPage() {
         {FACTIONS.map(f => {
           const slot = slots?.[f]
           const ui = slotUI(slot, f, gameStatus)
+          const saved = getSession(f)
+          const hasSavedSession = saved && saved.game_id === gameId
+          // Compute remaining minutes
+          let remainMin = null
+          if (hasSavedSession && saved.expires_at) {
+            const remain = Math.max(0, Math.floor((new Date(saved.expires_at).getTime() - Date.now()) / 60000))
+            remainMin = remain
+          }
           return (
             <div key={f} className={`lb-slot lb-s-${ui.cssClass}`} style={{ borderColor: FACTION_COLORS[f] }}>
+              {/* Saved session banner */}
+              {hasSavedSession && (
+                <div className="lb-s-banner">
+                  <span>✓ 你已加入 {f} 阵营</span>
+                  {remainMin != null && remainMin > 0 && (
+                    <span className="lb-s-banner-expire"> · Token 还有 {remainMin} 分钟有效</span>
+                  )}
+                  <button className="lb-s-banner-btn"
+                    onClick={() => { setModalPhase('done'); setModalFaction(f) }}>
+                    📋 查看接入指令
+                  </button>
+                </div>
+              )}
               <div className="lb-s-faction" style={{ color: FACTION_COLORS[f] }}>
                 {f}<span className="lb-s-monarch"> · {FACTION_MONARCHS[f]}</span>
               </div>
@@ -266,16 +287,6 @@ export default function LobbyPage() {
                   {ui.actions?.includes('ready') && (
                     <span className="lb-s-need-ready">等待 Ready</span>
                   )}
-                </div>
-              )}
-
-              {/* Saved session: "查看接入指令" button */}
-              {getSession(f) && getSession(f).game_id === gameId && (
-                <div style={{ marginTop: 8 }}>
-                  <button className="lb-btn lb-btn-ai"
-                    onClick={() => { setModalPhase('done'); setModalFaction(f) }}>
-                    📋 查看我的接入指令
-                  </button>
                 </div>
               )}
 

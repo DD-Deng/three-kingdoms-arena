@@ -91,6 +91,23 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase }) {
         const res = await api.joinLobby(faction)
         if (cancelled) return
         setResult(res)
+
+        // Save to localStorage immediately (before instruction fetch)
+        // so token survives even if instruction fetch fails
+        saveSession(faction, {
+          token: res.session_token,
+          game_id: res.game_id || gameId,
+          expires_at: res.expires_at,
+        })
+        // Start token countdown (30 min)
+        let remaining = 1800
+        setCountdown(remaining)
+        const iv = setInterval(() => {
+          remaining--
+          if (remaining <= 0) { clearInterval(iv); setCountdown(0) }
+          else setCountdown(remaining)
+        }, 1000)
+
         // Fetch instruction
         try {
           const instUrl = `/v1/lobby/instruction?token=${encodeURIComponent(res.session_token)}`
@@ -99,20 +116,6 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase }) {
           if (!cancelled) {
             setInstruction(text)
             setPhase('done')
-            // Save to localStorage
-            saveSession(faction, {
-              token: res.session_token,
-              game_id: res.game_id || gameId,
-              expires_at: res.expires_at,
-            })
-            // Start token countdown (30 min)
-            let remaining = 1800
-            setCountdown(remaining)
-            const iv = setInterval(() => {
-              remaining--
-              if (remaining <= 0) { clearInterval(iv); setCountdown(0) }
-              else setCountdown(remaining)
-            }, 1000)
           }
         } catch {
           if (!cancelled) {

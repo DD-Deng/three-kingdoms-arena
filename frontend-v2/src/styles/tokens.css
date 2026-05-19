@@ -521,6 +521,23 @@ a { color: inherit; }
 .lb-s-need-ready { color: var(--accent); font-size: var(--fs-sm); font-style: italic; }
 .lb-s-reconnect { margin-top: 10px; font-size: var(--fs-mono); color: var(--ink-dim); line-height: 1.4; }
 
+/* Saved session banner */
+.lb-s-banner {
+  background: #e8f4e8; border: 1px solid var(--wu);
+  padding: 10px 14px; margin: -24px -20px 14px -20px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: var(--fs-sm); color: var(--wu);
+}
+.lb-s-banner-expire { color: var(--ink-dim); font-size: var(--fs-sm); }
+.lb-s-banner-btn {
+  margin-left: auto; padding: 4px 12px;
+  font-size: var(--fs-sm); font-family: var(--font-sans);
+  cursor: pointer; background: var(--wu); color: #fff;
+  border: 1px solid var(--wu); font-weight: 600;
+  transition: background .2s;
+}
+.lb-s-banner-btn:hover { background: #236b33; }
+
 /* ── Battle preview ───────────────────────────── */
 .lb-battle-preview {
   background: var(--panel); border: 1px solid var(--line);
