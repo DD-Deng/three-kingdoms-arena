@@ -420,6 +420,28 @@ export default function SpectateV2() {
   // Agent details change slowly — poll at 10s
   const { data: cgData } = usePolling('/current-game', { intervalMs: 10000 })
 
+  // Accumulate events across ticks (backend only sends last N per tick)
+  const [accumulatedEvents, setAccumulatedEvents] = useState([])
+  const lastGameIdRef = useRef(null)
+
+  useEffect(() => {
+    if (!data?.events) return
+
+    // Clear when game changes (new game started)
+    if (data.game_id !== lastGameIdRef.current) {
+      lastGameIdRef.current = data.game_id
+      setAccumulatedEvents([])
+      if (data.events.length === 0) return
+    }
+
+    const newEvents = data.events
+    setAccumulatedEvents(prev => {
+      const seen = new Set(prev.map(e => `${e.tick}|${e.city}|${e.result}`))
+      const fresh = newEvents.filter(e => !seen.has(`${e.tick}|${e.city}|${e.result}`))
+      return fresh.length ? [...prev, ...fresh] : prev
+    })
+  }, [data?.events, data?.game_id])
+
   // Accumulate power history for win rate curve
   const [powerHistory, setPowerHistory] = useState([])
   const lastTickRef = useRef(-1)
@@ -453,7 +475,6 @@ export default function SpectateV2() {
   const maxTicks = data?.max_ticks ?? 50
   const status = data?.status ?? '?'
   const cities = data?.cities || []
-  const events = data?.events || []
   const chapters = data?.chapters || []
   const agents = cgData?.agents || []
   const factionsData = cgData?.factions
@@ -477,7 +498,7 @@ export default function SpectateV2() {
           {/* City map */}
           <div className="panel map-panel">
             <div className="panel-title">战局地图</div>
-            <CityMap cities={cities} events={events} />
+            <CityMap cities={cities} events={accumulatedEvents} />
           </div>
 
           {/* Eval bar */}
@@ -497,7 +518,7 @@ export default function SpectateV2() {
       </div>
 
       {/* ── Event feed ────────────────────────── */}
-      <EventFeed events={events} />
+      <EventFeed events={accumulatedEvents} />
 
       {/* ── Tick progress ─────────────────────── */}
       <TickBar tick={tick} maxTicks={maxTicks} />
