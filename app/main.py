@@ -210,10 +210,10 @@ app.include_router(lobby_router)
 static_dir = Path(__file__).parent.parent / "static"
 
 
-# ── 首页 — 返回 SPA ─────────────────────────────────────
+# ── 首页 — 返回新版 Vite SPA ─────────────────────────────
 @app.get("/")
 def root():
-    spa_index = static_dir / "index.html"
+    spa_index = _v2_dist / "index.html"
     if spa_index.is_file():
         return FileResponse(spa_index)
     from starlette.responses import RedirectResponse
