@@ -560,6 +560,103 @@ a { color: inherit; }
 .lb-footer { text-align: center; margin-top: 8px; }
 
 /* ═══════════════════════════════════════════════════════════════
+   Spectate page — beige theme
+   ═══════════════════════════════════════════════════════════════ */
+
+.sp-page { max-width: 1160px; margin: 0 auto; padding: 12px 0 40px; }
+.sp-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
+.sp-error { background: #fef0ef; border: 1px solid var(--accent); color: var(--accent); padding: 10px 16px; margin-bottom: 16px; font-family: var(--font-mono); font-size: var(--fs-nav); }
+.sp-mono { color: var(--ink); font-family: var(--font-mono); font-weight: 600; }
+
+/* Top bar */
+.sp-topbar { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+.sp-topbar h1 { font-size: 20px; margin: 0; font-weight: 700; }
+.sp-status { font-family: var(--font-mono); font-size: var(--fs-nav); padding: 2px 10px; }
+.sp-st-lobby, .sp-st-countdown, .sp-st-paused { color: var(--accent); }
+.sp-st-active { color: var(--wu); }
+.sp-st-finished { color: var(--ink-mute); }
+.sp-back { margin-left: auto; color: var(--ink-dim); text-decoration: none; font-size: var(--fs-nav); }
+.sp-back:hover { color: var(--ink); }
+
+/* Panel */
+.sp-panel { background: var(--panel); border: 1px solid var(--line); padding: 14px; }
+.sp-panel-title { font-size: var(--fs-nav); color: var(--ink-dim); margin-bottom: 10px; letter-spacing: 1px; }
+
+/* Main layout */
+.sp-main { display: grid; grid-template-columns: 55fr 45fr; gap: 20px; margin-bottom: 20px; }
+.sp-left { display: flex; flex-direction: column; gap: 12px; }
+.sp-right { display: flex; }
+
+/* SVG Map */
+.sp-map-panel { padding: 10px; }
+.sp-map-svg { width: 100%; height: auto; display: block; }
+.sp-map-adj { stroke: var(--line); stroke-width: 0.8; stroke-dasharray: 3 3; }
+.sp-map-city { transition: opacity .3s; }
+.sp-map-city-flash rect { filter: drop-shadow(0 0 6px currentColor); animation: sp-city-flash .3s ease-in-out 3; }
+@keyframes sp-city-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.sp-map-arrow { stroke-dasharray: 4 2; animation: sp-arrow-fade 2s ease-out forwards; }
+@keyframes sp-arrow-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Eval bar */
+.sp-eval-wrap { padding: 6px 0; }
+.sp-eval-bar { height: 8px; display: flex; border-radius: 4px; overflow: hidden; background: var(--bg); }
+.sp-eval-seg { transition: width .5s; }
+.sp-eval-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: var(--fs-mono); font-family: var(--font-mono); }
+
+/* Faction cards */
+.sp-fc-row { display: flex; gap: 10px; }
+.sp-fc-card { flex: 1; background: var(--panel); border: 1px solid var(--line); padding: 12px; }
+.sp-fc-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.sp-fc-faction { font-size: 18px; font-weight: 700; }
+.sp-fc-monarch { font-size: var(--fs-sm); color: var(--ink-dim); }
+.sp-fc-stats { display: flex; gap: 14px; margin-bottom: 6px; }
+.sp-fc-stat { display: flex; flex-direction: column; }
+.sp-fc-label { font-size: 10px; color: var(--ink-mute); }
+.sp-fc-value { font-size: 16px; font-weight: 600; font-family: var(--font-mono); }
+.sp-fc-agent { font-size: var(--fs-mono); color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 6px; margin-top: 4px; }
+.sp-fc-submitted { color: var(--wu); }
+
+/* Event feed */
+.sp-feed { background: var(--panel); border: 1px solid var(--line); margin-bottom: 16px; }
+.sp-feed-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-nav); color: var(--ink-dim); }
+.sp-feed-lock { background: transparent; border: 1px solid var(--ink-mute); color: var(--ink-dim); font-size: var(--fs-mono); padding: 2px 10px; cursor: pointer; font-family: var(--font-sans); }
+.sp-feed-lock.locked { border-color: var(--ink-dim); color: var(--ink); }
+.sp-feed-body { max-height: 200px; overflow-y: auto; padding: 0; }
+.sp-feed-empty { padding: 20px; text-align: center; color: var(--ink-mute); font-size: var(--fs-nav); }
+
+.sp-event { padding: 8px 14px; border-bottom: 1px solid var(--line-2); cursor: pointer; transition: background .2s; }
+.sp-event:hover { background: var(--panel-2); }
+.sp-event.expanded { background: var(--panel-2); }
+.sp-event.sp-event-new { animation: sp-ev-highlight .5s ease-out; }
+@keyframes sp-ev-highlight { 0% { background: #fef8e0; } 100% { background: var(--panel); } }
+.sp-event-summary { display: flex; gap: 10px; font-size: var(--fs-nav); align-items: baseline; }
+.sp-event-tick { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--ink-mute); min-width: 28px; }
+.sp-event-desc { color: var(--ink); }
+
+.sp-cr { margin-top: 8px; padding: 10px; background: var(--bg); border: 1px solid var(--line); font-size: var(--fs-sm); }
+.sp-cr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; color: var(--ink-dim); }
+.sp-cr-hexagram { margin-top: 6px; color: var(--ink-dim); font-family: var(--font-mono); font-size: var(--fs-mono); }
+
+/* Narrative */
+.sp-narrative { flex: 1; }
+.sp-narrative-placeholder { color: var(--ink-mute); font-style: italic; text-align: center; padding: 40px 20px; }
+.sp-narrative-chapter { padding: 10px 0; border-bottom: 1px solid var(--line); animation: sp-fadeIn .5s; }
+.sp-narrative-tick { font-size: var(--fs-mono); color: var(--ink-dim); font-family: var(--font-mono); margin-bottom: 4px; }
+.sp-narrative-text { font-size: var(--fs-nav); line-height: 1.8; color: var(--ink); }
+@keyframes sp-fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Win rate curve */
+.sp-winrate { margin-top: 12px; }
+.sp-winrate-svg { width: 100%; height: 80px; }
+.sp-winrate-legend { display: flex; gap: 16px; font-size: var(--fs-mono); font-family: var(--font-mono); }
+
+/* Tick bar */
+.sp-tickbar-wrap { padding: 4px 0 20px; }
+.sp-tickbar-label { font-size: var(--fs-sm); color: var(--ink-dim); margin-bottom: 4px; font-family: var(--font-mono); }
+.sp-tickbar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.sp-tickbar-fill { height: 100%; background: var(--accent); transition: width .5s; }
+
+/* ═══════════════════════════════════════════════════════════════
    Join modal — instruction dialog
    ═══════════════════════════════════════════════════════════════ */
 

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Link } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
+import SpectatePage from './pages/SpectatePage'
 import LobbyV2 from './LobbyV2'
 import SpectateV2 from './SpectateV2'
 
@@ -24,8 +25,11 @@ export default function App() {
         {/* ── /lobby → 301 跳首页 ── */}
         <Route path="/lobby" element={<Navigate to="/" replace />} />
 
-        {/* ── 实际页面 ── */}
-        <Route path="/spectate" element={<SpectateV2 />} />
+        {/* ── 观战页（米色） ── */}
+        <Route path="/spectate" element={<SpectatePage />} />
+
+        {/* ── 临时：暗色 SpectateV2 参考 ── */}
+        <Route path="/spectate-temp" element={<SpectateV2 />} />
 
         {/* ── 临时：LobbyV2 功能保留（阶段 4 替换为米色 Lobby） ── */}
         <Route path="/lobby-temp" element={<LobbyV2 />} />
