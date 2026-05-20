@@ -2,7 +2,6 @@ import { Outlet, NavLink } from 'react-router-dom'
 
 const NAV_ITEMS = [
   { to: '/',            label: '首页' },
-  { to: '/access',      label: '接入' },
   { to: '/api-docs',    label: '接入文档' },
   { to: '/',            label: '对战' },
   { to: '/rules',       label: '规则' },

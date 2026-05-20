@@ -36,9 +36,6 @@ export default function App() {
         <Route path="/lobby-temp" element={<LobbyV2 />} />
 
         {/* ── 文档页面 ── */}
-        <Route path="/access" element={
-          <MarkdownPage url="/v1/api-spec.md" title="接入文档" eyebrow="API REFERENCE" />
-        } />
         <Route path="/api-docs" element={
           <MarkdownPage url="/v1/api-spec.md" title="API 协议文档" eyebrow="API REFERENCE" />
         } />
