@@ -1,0 +1,164 @@
+/* ═══════════════════════════════════════════════════════════════
+   ink-landscape.css — three layouts: scroll / mirror / fill
+   ═══════════════════════════════════════════════════════════════ */
+
+.ink-landscape {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition: opacity 0.5s;
+  mix-blend-mode: multiply;
+}
+.ink-landscape img {
+  position: absolute;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: il-fade-in 1.6s ease-out both;
+}
+@keyframes il-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── SCROLL: centered, natural aspect ──────────────────────── */
+.lay-scroll .il-main {
+  height: 100vh; width: auto;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ── MIRROR: center + mirrored echoes on each side ─────────── */
+.lay-mirror .il-main {
+  height: 100vh; width: auto;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.lay-mirror .il-mirror {
+  height: 100vh; width: auto;
+  top: 50%;
+  opacity: 0.65;
+  z-index: 1;
+}
+.lay-mirror .il-mirror.il-left {
+  right: calc(50% + 25vh);
+  transform: translateY(-50%) scaleX(-1);
+}
+.lay-mirror .il-mirror.il-right {
+  left: calc(50% + 25vh);
+  transform: translateY(-50%) scaleX(-1);
+}
+
+/* ── FILL: 4-panel composite, cover viewport ───────────────── */
+.lay-fill .il-main {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  top: 0; left: 0;
+}
+.lay-fill .il-overlay { display: none; }
+.lay-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(243,234,215,0.45) 50%,
+    rgba(243,234,215,0.3) 60%,
+    transparent 75%,
+    transparent 100%);
+  pointer-events: none;
+  animation: il-mist-band-shift 38s ease-in-out infinite;
+}
+.lay-fill.still::after { animation: none; }
+@keyframes il-mist-band-shift {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3%); }
+}
+
+/* ── Overlay matches single-painting box for scroll/mirror ── */
+.il-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 100vh;
+  width: auto;
+  aspect-ratio: 729 / 1280;
+  transform: translate(-50%, -50%);
+  display: block;
+  z-index: 3;
+}
+
+/* ── Animations ────────────────────────────────────────────── */
+.alive .il-mist-wrap {
+  animation: il-mist-drift 42s ease-in-out infinite;
+}
+@keyframes il-mist-drift {
+  0%,100% { transform: translateX(-60px); }
+  50%     { transform: translateX(60px); }
+}
+.alive.hover-cliff .il-mist-wrap { animation-duration: 14s; }
+
+.il-cliff-glow { opacity: 0; transition: opacity 0.5s; }
+.alive.hover-cliff .il-cliff-glow { opacity: 1; }
+
+.il-puff { opacity: 0; transform-origin: 200px 780px; }
+.alive.hover-cliff .il-puff {
+  animation: il-puff-rise 5s ease-in-out infinite;
+}
+@keyframes il-puff-rise {
+  0%   { opacity: 0;   transform: translateY(20px) scale(0.85); }
+  40%  { opacity: 1;   transform: translateY(-10px) scale(1.05); }
+  100% { opacity: 0;   transform: translateY(-50px) scale(1.2); }
+}
+
+.alive .il-bamboo {
+  transform-origin: 620px 880px;
+  animation: il-bamboo-sway 5s ease-in-out infinite;
+  opacity: 0.55;
+}
+@keyframes il-bamboo-sway {
+  0%,100% { transform: rotate(-0.8deg); }
+  50%     { transform: rotate( 0.8deg); }
+}
+.alive.hover-bamboo .il-bamboo {
+  opacity: 1;
+  animation: il-bamboo-sway-strong 1.4s ease-in-out infinite;
+}
+@keyframes il-bamboo-sway-strong {
+  0%,100% { transform: rotate(-2.4deg); }
+  25%     { transform: rotate( 2deg); }
+  50%     { transform: rotate(-1.8deg); }
+  75%     { transform: rotate( 2.4deg); }
+}
+
+.il-puff-dancers { opacity: 0.4; animation: il-tread 3.2s ease-in-out infinite; }
+.alive.hover-dancers .il-puff-dancers {
+  opacity: 1; animation-duration: 1.4s;
+}
+@keyframes il-tread {
+  0%,100% { transform: translateY(0); opacity: 0.3; }
+  50%     { transform: translateY(-3px); opacity: 0.7; }
+}
+
+.still .il-mist-wrap,
+.still .il-puff,
+.still .il-bamboo,
+.still .il-puff-dancers,
+.still .il-cliff-glow { animation: none !important; }
+
+@media (max-width: 720px) {
+  .ink-landscape { opacity: 0.4 !important; }
+  .lay-mirror .il-mirror { display: none; }
+  .lay-mirror .il-main { height: 110vh; }
+}
+
+.nav, .page, .footer, [class*="modal"] {
+  position: relative;
+  z-index: 2;
+}
