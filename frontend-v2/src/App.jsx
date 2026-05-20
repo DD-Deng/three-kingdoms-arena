@@ -3,6 +3,9 @@ import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
 import SpectatePage from './pages/SpectatePage'
 import MarkdownPage from './pages/MarkdownPage'
+import BattlesPage from './pages/BattlesPage'
+import BattleDetailPage from './pages/BattleDetailPage'
+import CommentaryPage from './pages/CommentaryPage'
 import LobbyV2 from './LobbyV2'
 import SpectateV2 from './SpectateV2'
 
@@ -42,9 +45,9 @@ export default function App() {
         <Route path="/rules" element={
           <MarkdownPage url="/v1/rules" title="游戏规则" eyebrow="GAME RULES" />
         } />
-        <Route path="/battles" element={<Placeholder title="历史战报" desc="已完结对局的复盘与评书" />} />
-        <Route path="/battles/:id" element={<Placeholder title="战报详情" />} />
-        <Route path="/battles/:id/commentary" element={<Placeholder title="评书展示" />} />
+        <Route path="/battles" element={<BattlesPage />} />
+        <Route path="/battles/:id" element={<BattleDetailPage />} />
+        <Route path="/battles/:id/commentary" element={<CommentaryPage />} />
         <Route path="/rankings" element={<Placeholder title="排行榜" desc="Agent 胜率排名" />} />
 
         {/* ── 管理后台 ── */}

@@ -706,6 +706,90 @@ a { color: inherit; }
 .md-body strong { font-weight: 700; }
 
 /* ═══════════════════════════════════════════════════════════════
+   Battle pages — list, detail, commentary
+   ═══════════════════════════════════════════════════════════════ */
+
+.bt-page { max-width: 900px; margin: 0 auto; padding: 24px 0 60px; }
+.bt-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
+.bt-error { background: #fef0ef; border: 1px solid var(--accent); color: var(--accent); padding: 12px 16px; margin-bottom: 20px; }
+.bt-back { display: inline-block; color: var(--ink-dim); text-decoration: none; font-size: var(--fs-nav); margin-bottom: 20px; }
+.bt-back:hover { color: var(--ink); }
+.bt-header { margin-bottom: 8px; }
+
+/* ── Battle list ──────────────────────────────── */
+.bt-empty { text-align: center; padding: 60px 0; color: var(--ink-dim); }
+.bt-empty p { font-size: var(--fs-body); margin-bottom: 8px; }
+.bt-empty-hint { font-size: var(--fs-nav); color: var(--ink-mute); }
+
+.bt-list { display: flex; flex-direction: column; border: 1px solid var(--line); }
+.bt-row {
+  display: flex; align-items: center; gap: 18px;
+  padding: 16px 20px; background: var(--panel);
+  text-decoration: none; color: inherit;
+  border-bottom: 1px solid var(--line-2);
+}
+.bt-row:last-child { border-bottom: none; }
+.bt-row:hover { background: var(--panel-2); }
+.bt-id { font-family: var(--font-mono); font-size: 16px; color: var(--accent); font-weight: 600; min-width: 60px; }
+.bt-mid { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.bt-line1 { display: flex; gap: 10px; align-items: center; }
+.bt-model { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink); }
+.bt-winner { font-size: var(--fs-nav); font-weight: 600; }
+.bt-line2 { display: flex; gap: 18px; font-size: var(--fs-sm); color: var(--ink-dim); }
+.bt-has-commentary { color: var(--ink-dim); }
+.bt-ago { color: var(--ink-mute); font-family: var(--font-mono); font-size: var(--fs-mono); margin-left: auto; }
+
+/* ── Battle detail ─────────────────────────────── */
+.bd-header { margin-bottom: 28px; }
+.bd-header h1 { font-size: var(--fs-h1); font-weight: 700; margin-bottom: 8px; }
+.bd-meta { display: flex; gap: 16px; color: var(--ink-dim); font-size: var(--fs-nav); flex-wrap: wrap; }
+.bd-winner { font-weight: 700; }
+
+.bd-section { margin-bottom: 32px; }
+.bd-section h2 { font-size: var(--fs-h2); font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+
+.bd-cities { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.bd-city {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--line); padding: 10px 14px;
+}
+.bd-city-name { font-weight: 600; font-size: var(--fs-nav); }
+.bd-city-owner { font-size: var(--fs-sm); font-weight: 600; }
+.bd-city-troops { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink-dim); }
+
+.bd-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.bd-stat-card { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
+.bd-stat-faction { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+.bd-stat-row { display: flex; justify-content: space-between; font-size: var(--fs-nav); color: var(--ink-dim); padding: 4px 0; border-bottom: 1px solid var(--line-2); }
+.bd-stat-row:last-child { border-bottom: none; }
+.bd-stat-row span:last-child { font-weight: 600; color: var(--ink); font-family: var(--font-mono); }
+
+.bd-timeline { border-left: 2px solid var(--line); padding-left: 16px; }
+.bd-tl-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: var(--fs-nav); }
+.bd-tl-tick { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--ink-mute); min-width: 30px; }
+.bd-tl-desc { color: var(--ink); }
+.bd-tl-high { font-family: var(--font-mono); font-size: 10px; color: var(--accent); border: 1px solid var(--accent); padding: 1px 6px; }
+
+.bd-commentary-link { text-align: center; margin-top: 20px; }
+
+/* ── Commentary page ───────────────────────────── */
+.co-page { max-width: 720px; margin: 0 auto; padding: 24px 0 60px; }
+.co-top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+.co-gameid { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink-mute); }
+.co-empty { text-align: center; padding: 60px 0; color: var(--ink-mute); }
+
+.co-body {
+  font-family: var(--font-sans); font-size: 17px; line-height: 2.1;
+  color: var(--ink); max-width: 640px; margin: 0 auto;
+}
+.co-body h1 { font-size: 24px; margin: 40px 0 20px; text-align: center; font-weight: 700; }
+.co-body h2 { font-size: 20px; margin: 32px 0 14px; font-weight: 600; }
+.co-body p { margin-bottom: 16px; text-indent: 2em; }
+.co-body blockquote { border-left: 3px solid var(--accent); padding: 8px 16px; margin: 16px 0; color: var(--ink-dim); font-style: italic; }
+.co-body hr { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
+.co-body em { font-style: italic; color: var(--ink-dim); }
+
+/* ═══════════════════════════════════════════════════════════════
    Join modal — instruction dialog
    ═══════════════════════════════════════════════════════════════ */
 
