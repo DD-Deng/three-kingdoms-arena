@@ -6,6 +6,10 @@ import MarkdownPage from './pages/MarkdownPage'
 import BattlesPage from './pages/BattlesPage'
 import BattleDetailPage from './pages/BattleDetailPage'
 import CommentaryPage from './pages/CommentaryPage'
+import AdminLoginPage from './pages/AdminLoginPage'
+import AdminPage from './pages/AdminPage'
+import AdminBattleDetail from './pages/AdminBattleDetail'
+import AdminStatsPage from './pages/AdminStatsPage'
 import LobbyV2 from './LobbyV2'
 import SpectateV2 from './SpectateV2'
 
@@ -51,10 +55,10 @@ export default function App() {
         <Route path="/rankings" element={<Placeholder title="排行榜" desc="Agent 胜率排名" />} />
 
         {/* ── 管理后台 ── */}
-        <Route path="/admin/login" element={<Placeholder title="管理后台登录" />} />
-        <Route path="/admin" element={<Placeholder title="管理后台" desc="对战列表管理" />} />
-        <Route path="/admin/battles/:id" element={<Placeholder title="对战详情管理" />} />
-        <Route path="/admin/stats" element={<Placeholder title="统计面板" />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/battles/:id" element={<AdminBattleDetail />} />
+        <Route path="/admin/stats" element={<AdminStatsPage />} />
 
         {/* ── 兼容旧路由 ── */}
         <Route path="/lobby" element={<Navigate to="/" replace />} />
