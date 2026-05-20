@@ -10,8 +10,6 @@ import AdminLoginPage from './pages/AdminLoginPage'
 import AdminPage from './pages/AdminPage'
 import AdminBattleDetail from './pages/AdminBattleDetail'
 import AdminStatsPage from './pages/AdminStatsPage'
-import LobbyV2 from './LobbyV2'
-import SpectateV2 from './SpectateV2'
 
 function Placeholder({ title, desc }) {
   return (
@@ -35,12 +33,6 @@ export default function App() {
 
         {/* ── 观战页（米色） ── */}
         <Route path="/spectate" element={<SpectatePage />} />
-
-        {/* ── 临时：暗色 SpectateV2 参考 ── */}
-        <Route path="/spectate-temp" element={<SpectateV2 />} />
-
-        {/* ── 临时：LobbyV2 功能保留（阶段 4 替换为米色 Lobby） ── */}
-        <Route path="/lobby-temp" element={<LobbyV2 />} />
 
         {/* ── 文档页面 ── */}
         <Route path="/api-docs" element={
