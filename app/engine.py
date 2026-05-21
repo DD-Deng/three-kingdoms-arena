@@ -2911,6 +2911,33 @@ def join_current_game(session: Session, name: str, faction: str, persona: str | 
     }
 
 
+def build_public_factions(game, cities: list) -> dict[str, dict]:
+    """Build per-faction public summary from game.resources JSON.
+
+    Returns dict keyed by faction name with cities, troops, grain, alliance_with.
+    Safe — returns empty dict if game.resources is missing or corrupt.
+    """
+    resources_raw: dict = {}
+    if game.resources:
+        try:
+            resources_raw = json.loads(game.resources)
+        except Exception:
+            pass
+
+    result: dict[str, dict] = {}
+    for f in FACTION_POOL:
+        owned = [c for c in cities if c.owner == f]
+        troops = sum(c.troops for c in owned)
+        fres = resources_raw.get(f, {})
+        result[f] = {
+            "cities": len(owned),
+            "troops": troops,
+            "grain": int(fres.get("grain", 0)),
+            "alliance_with": fres.get("alliance_with"),
+        }
+    return result
+
+
 def current_game_state(session: Session) -> dict:
     """Public live state for the current game (homepage spectator view)."""
     from .config import TICK_TIMEOUT_SEC
@@ -2958,23 +2985,7 @@ def current_game_state(session: Session) -> dict:
             "is_player": a.agent_name not in default_names,
         })
 
-    # Read resources for alliance info
-    resources_raw = {}
-    if game.resources:
-        resources_raw = json.loads(game.resources)
-
-    # Per-faction summary
-    factions_summary = {}
-    for f in FACTION_POOL:
-        owned = [c for c in cities if c.owner == f]
-        troops = sum(c.troops for c in owned)
-        fres = resources_raw.get(f, {})
-        factions_summary[f] = {
-            "cities": len(owned),
-            "troops": troops,
-            "grain": fres.get("grain", 0),
-            "alliance_with": fres.get("alliance_with"),
-        }
+    factions_summary = build_public_factions(game, cities)
 
     return {
         "game_id": game.id,

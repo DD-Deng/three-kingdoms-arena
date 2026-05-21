@@ -205,6 +205,12 @@ def root():
     raise HTTPException(status_code=404)
 
 
+@app.get("/current-game")
+def current_game(session: Session = Depends(get_session)):
+    """Public view of the current active game — homepage spectator data."""
+    return eng.current_game_state(session)
+
+
 def _auth(session: Session, game_id: int, token: str) -> Agent:
     agent = session.exec(
         select(Agent).where(
