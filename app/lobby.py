@@ -346,6 +346,17 @@ def get_lobby_status(session: Session) -> dict:
     if game.last_tick_diplomacy:
         diplomacy = json.loads(game.last_tick_diplomacy)
 
+    # ── factions: per-faction public stats (grain) ───────
+    factions: dict[str, dict] = {}
+    if game.resources:
+        try:
+            resources = json.loads(game.resources)
+            for f in FACTION_POOL:
+                fres = resources.get(f, {})
+                factions[f] = {"grain": int(fres.get("grain", 0))}
+        except Exception:
+            pass
+
     return {
         "game_id": game.id,
         "status": game.status,
@@ -361,6 +372,7 @@ def get_lobby_status(session: Session) -> dict:
             {"name": c.name, "owner": c.owner, "troops": c.troops}
             for c in cities
         ],
+        "factions": factions,
         "events": events[-5:] if events else [],
         "diplomacy": diplomacy[-3:] if diplomacy else [],
         "chapters": json.loads(game.chapters) if game.chapters else [],
