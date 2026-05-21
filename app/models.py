@@ -183,8 +183,18 @@ class BattleHistory(SQLModel, table=True):
     winner: Optional[str] = None
     total_ticks: int = 0
     summary: Optional[str] = None  # JSON: 终局城池/兵力快照
-    has_commentary: bool = False
     status: str = "finished"  # finished | max_ticks | error
+
+    # Commentary system (v0.9)
+    commentary_status: str = Field(default="not_started")  # not_started | generating | ready | failed
+    commentary_started_at: Optional[str] = Field(default=None)
+    commentary_content: Optional[str] = Field(default=None)
+    last_error: Optional[str] = Field(default=None)
+
+    @property
+    def has_commentary(self) -> bool:
+        """Backward-compat: derived from commentary_status."""
+        return self.commentary_status == "ready"
 
 
 # ═══════════════════════════════════════════════════════════════

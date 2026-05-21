@@ -60,6 +60,23 @@ def _migrate():
                 except Exception:
                     pass
 
+        # Add commentary columns to battlehistory table if missing
+        if "battlehistory" in inspector.get_table_names():
+            bh_cols = {c["name"] for c in inspector.get_columns("battlehistory")}
+            bh_migrations = [
+                ("commentary_status", "VARCHAR DEFAULT 'not_started'"),
+                ("commentary_started_at", "VARCHAR"),
+                ("commentary_content", "TEXT"),
+                ("last_error", "VARCHAR"),
+            ]
+            for col_name, col_type in bh_migrations:
+                if col_name not in bh_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE battlehistory ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                    except Exception:
+                        pass
+
     # ── Data migration: clamp defense levels (v0.5 → v0.6 cap 5→3) ──
     from sqlmodel import Session as _Session
     with _Session(engine) as session:

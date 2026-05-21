@@ -7,9 +7,9 @@ try:
     load_dotenv()
 except ImportError:
     pass
-from fastapi import FastAPI, Depends, HTTPException, Request, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from sqlmodel import Session, select
 from pathlib import Path
 
@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .limiter import limiter
 from .database import init_db, get_session
-from .models import Agent, Action, Game, BattleHistory, BattleLogFile
+from .models import Agent, Action, Game, BattleHistory, BattleLogFile, City
 from .models import Session as SessionModel
 from . import engine as eng
 from .admin import router as admin_router
@@ -398,34 +398,58 @@ def tick_game(
 
 
 # ═══════════════════════════════════════════════════════════════
-# 公开页面
+# 公开战报 — /v1/games/{game_id}/result
 # ═══════════════════════════════════════════════════════════════
 
-    # ── Key events ───────────────────────────────────────────
-    key_events: list[dict] = []
+@app.get("/v1/games/{game_id}/result")
+def game_result(game_id: int, session: Session = Depends(get_session)):
+    """对局赛果摘要 —— 无需 token，对局结束后永久可匿名访问。"""
+    import json
+    from datetime import datetime, timezone
+    from collections import defaultdict
+    from .engine import PUBLIC_LOG_DIR
+
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status != "finished":
+        raise HTTPException(status_code=425, detail="对局仍在进行中")
+
+    FACTION_LIST = ["蜀", "魏", "吴"]
+
+    # ── 加载 public log ticks ──────────────────────────────
+    log_path = PUBLIC_LOG_DIR / f"{game_id}.jsonl"
+    ticks: list[dict] = []
     if log_path.exists():
         try:
-            lines = log_path.read_text(encoding="utf-8").strip().split("\n")
-            for line in lines[-20:]:  # last 20 ticks
+            for line in log_path.read_text(encoding="utf-8").strip().split("\n"):
                 if not line:
                     continue
-                entry = json.loads(line)
-                for evt in entry.get("events", []):
-                    if evt.get("result") in ("captured", "alliance_broken"):
-                        significance = "high" if evt.get("result") == "captured" else "medium"
-                        key_events.append({
-                            "tick": entry.get("tick"),
-                            "event": _describe_event(evt),
-                            "significance": significance,
-                        })
+                ticks.append(json.loads(line))
         except Exception:
             pass
 
-    # ── Duration ─────────────────────────────────────────────
+    # ── final_cities: finished → DB City 表（末态精确） ────
+    final_cities: list[dict] = []
+    db_cities = session.exec(select(City).where(City.game_id == game_id)).all()
+    final_cities = [
+        {"name": c.name, "owner": c.owner, "troops": c.troops}
+        for c in db_cities
+    ]
+
+    # ── winner_reason ──────────────────────────────────────
+    winner_reason = _compute_winner_reason(game, final_cities)
+
+    # ── faction_stats ──────────────────────────────────────
+    faction_stats = _compute_faction_stats(ticks, final_cities, FACTION_LIST)
+
+    # ── key_events ─────────────────────────────────────────
+    key_events = _extract_key_events(ticks)
+
+    # ── duration_sec ───────────────────────────────────────
     duration_sec = None
     if game.started_at and game.finished_at:
         try:
-            from datetime import datetime, timezone
             started = datetime.fromisoformat(game.started_at)
             finished = datetime.fromisoformat(game.finished_at)
             duration_sec = int((finished - started).total_seconds())
@@ -434,71 +458,258 @@ def tick_game(
 
     return {
         "game_id": game.id,
-        "status": game.status,
         "winner": game.winner,
         "winner_reason": winner_reason,
         "tick_finished": game.tick,
-        "started_at": game.started_at,
-        "finished_at": game.finished_at,
         "duration_sec": duration_sec,
         "final_cities": final_cities,
         "faction_stats": faction_stats,
-        "key_events": key_events[-10:],
-        "commentary_available": False,
-        "commentary_url": f"/v1/games/{game_id}/commentary",
-        "replay_url": f"/v1/games/{game_id}/replay",
+        "key_events": key_events,
     }
 
 
-def _describe_event(evt: dict) -> str:
-    """Human-readable Chinese description of a combat/diplomacy event."""
-    result = evt.get("result", "")
-    city = evt.get("city", evt.get("target", ""))
-    attacker = evt.get("attacker_faction", "")
-    defender = evt.get("defender_faction", evt.get("previous_owner", ""))
-    if result == "captured":
-        if attacker and city:
-            return f"{attacker}占领{city}"
-        return f"城池{city}易主"
-    if result == "alliance_broken":
-        faction_a = evt.get("faction_a", evt.get("from_faction", ""))
-        faction_b = evt.get("faction_b", "")
-        if faction_a and faction_b:
-            return f"{faction_a}与{faction_b}盟约破裂"
-        return "盟约破裂"
-    return evt.get("type", result or "未知事件")
+# ── Helper: winner_reason ──────────────────────────────────
 
+def _compute_winner_reason(game, final_cities: list[dict]) -> str:
+    if not game.winner:
+        return "对局中止"
+    owners = {c["owner"] for c in final_cities if c.get("owner") is not None}
+    if len(owners) == 1:
+        return "统一中原"
+    from collections import defaultdict
+    fc: dict[str, int] = defaultdict(int)
+    ft: dict[str, int] = defaultdict(int)
+    for c in final_cities:
+        o = c.get("owner")
+        if o:
+            fc[o] += 1
+            ft[o] += c.get("troops", 0)
+    if not fc:
+        return "胜负判定"
+    max_cities = max(fc.values())
+    top_factions = [f for f, n in fc.items() if n == max_cities]
+    if len(top_factions) == 1 and top_factions[0] == game.winner:
+        return "疆域优势"
+    if game.winner in top_factions:
+        w_troops = ft[game.winner]
+        other_max = max((t for f, t in ft.items() if f != game.winner and f in top_factions), default=0)
+        if w_troops > other_max:
+            return "兵力优势"
+    return "胜负判定"
+
+
+# ── Helper: faction_stats ─────────────────────────────────
+
+def _compute_faction_stats(ticks: list[dict], final_cities: list[dict], factions: list[str]) -> dict:
+    from collections import defaultdict
+    stats: dict = {f: {"final_cities": 0, "peak_cities": 0, "kills": 0.0, "losses": 0.0} for f in factions}
+
+    for t in ticks:
+        # peak_cities: count cities owned per tick
+        tick_owned: dict[str, int] = defaultdict(int)
+        for c in t.get("cities", []):
+            o = c.get("owner")
+            if o and o in factions:
+                tick_owned[o] += 1
+        for f in factions:
+            if tick_owned[f] > stats[f]["peak_cities"]:
+                stats[f]["peak_cities"] = tick_owned[f]
+
+        # kills/losses from combat reports
+        for evt in t.get("events", []):
+            attackers = evt.get("attackers")
+            if not attackers:
+                continue
+            cr = evt.get("combat_report")
+            if not cr:
+                continue
+            try:
+                def_loss = int(cr["defender_losses"])
+                atk_loss = int(cr["attacker_losses"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            defender = evt.get("defender", "")
+            n = max(len(attackers), 1)
+            for atk in attackers:
+                if atk in stats:
+                    stats[atk]["kills"] += def_loss / n
+                    stats[atk]["losses"] += atk_loss / n
+            if defender in stats:
+                stats[defender]["kills"] += atk_loss
+                stats[defender]["losses"] += def_loss
+
+    # final_cities from end-of-game state
+    for c in final_cities:
+        o = c.get("owner")
+        if o and o in stats:
+            stats[o]["final_cities"] += 1
+
+    for f in factions:
+        stats[f]["kills"] = round(stats[f]["kills"])
+        stats[f]["losses"] = round(stats[f]["losses"])
+
+    return stats
+
+
+# ── Helper: key_events ────────────────────────────────────
+
+def _extract_key_events(ticks: list[dict]) -> list[dict]:
+    captured: list[dict] = []
+    alliances: list[dict] = []
+    battles: list[dict] = []
+
+    for t in ticks:
+        tick = t.get("tick", 0)
+
+        for evt in t.get("events", []):
+            result = evt.get("result", "")
+            cr = evt.get("combat_report", {}) or {}
+            troops = cr.get("attacker_troops_committed", 0)
+            is_big = isinstance(troops, (int, float)) and troops >= 500
+
+            if result == "captured":
+                cb = evt.get("captured_by", "")
+                city = evt.get("city", "")
+                captured.append({
+                    "tick": tick,
+                    "event": f"{cb}占领{city}",
+                    "significance": "high",
+                })
+            elif is_big:
+                atk_str = "、".join(evt.get("attackers", []))
+                city = evt.get("city", "")
+                df = evt.get("defender", "")
+                battles.append({
+                    "tick": tick,
+                    "event": f"大战{city}: {atk_str}攻{df} ({troops}兵)",
+                    "significance": "medium",
+                })
+
+        for dip in t.get("diplomacy", []):
+            d_type = dip.get("diplomacy_type", "")
+            ff = dip.get("from_faction", "")
+            if d_type == "alliance_accept":
+                alliances.append({"tick": tick, "event": f"联盟成立: {ff}", "significance": "medium"})
+            elif d_type == "alliance_break":
+                alliances.append({"tick": tick, "event": f"盟约破裂: {ff}", "significance": "high"})
+
+    # Priority: captured + alliances first, then fill with big battles to 30
+    result = captured + alliances
+    remaining = max(0, 30 - len(result))
+    result += battles[:remaining]
+    result.sort(key=lambda e: e["tick"])
+    return result[:30]
+
+
+# ═══════════════════════════════════════════════════════════════
+# 评书接口 — 四种状态: not_started / generating / ready / failed
+# ═══════════════════════════════════════════════════════════════
 
 @app.get("/v1/games/{game_id}/commentary")
 def game_commentary(game_id: int, session: Session = Depends(get_session)):
-    """Return LLM-generated battle commentary. 202 if not yet available."""
+    """Return full battle commentary. Status discriminated by commentary_status."""
     game = session.get(Game, game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="对局不存在")
     if game.status != "finished":
         raise HTTPException(status_code=425, detail="Game still in progress")
 
-    # Check for existing commentary in BattleHistory
     bh = session.exec(
         select(BattleHistory).where(BattleHistory.game_id == game_id)
     ).first()
 
-    if bh and bh.has_commentary:
-        log_files = session.exec(
-            select(BattleLogFile).where(
-                BattleLogFile.battle_id == bh.battle_id,
-                BattleLogFile.file_type == "commentary",
-            )
-        ).all()
-        for lf in log_files:
-            if lf.file_path and Path(lf.file_path).exists():
-                text = Path(lf.file_path).read_text(encoding="utf-8")
-                return PlainTextResponse(content=text, media_type="text/plain; charset=utf-8")
+    # ── ready ──────────────────────────────────────────────
+    if bh and bh.commentary_status == "ready" and bh.commentary_content:
+        return PlainTextResponse(content=bh.commentary_content, media_type="text/plain; charset=utf-8")
 
-    return JSONResponse(
-        status_code=202,
-        content={"detail": "评书正在生成中，请稍后再试", "retry_after_sec": 60},
-    )
+    # ── generating (with timeout detection) ─────────────────
+    if bh and bh.commentary_status == "generating":
+        if bh.commentary_started_at:
+            try:
+                from datetime import datetime, timezone
+                started = datetime.fromisoformat(bh.commentary_started_at)
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+                if elapsed > 600:
+                    bh.commentary_status = "failed"
+                    bh.last_error = "生成超时"
+                    session.add(bh)
+                    session.commit()
+                    # fall through to failed
+                else:
+                    return JSONResponse(status_code=202, content={
+                        "detail": "评书正在生成中，请稍后再试",
+                        "retry_after_sec": 60,
+                    })
+            except Exception:
+                pass
+        return JSONResponse(status_code=202, content={
+            "detail": "评书正在生成中，请稍后再试",
+            "retry_after_sec": 60,
+        })
+
+    # ── failed ─────────────────────────────────────────────
+    if bh and bh.commentary_status == "failed":
+        return JSONResponse(status_code=200, content={
+            "error_code": "COMMENTARY_FAILED",
+            "detail": "评书生成失败",
+            "last_error": bh.last_error or "未知错误",
+        })
+
+    # ── not_started (default) ──────────────────────────────
+    return JSONResponse(status_code=200, content={
+        "error_code": "COMMENTARY_NOT_STARTED",
+        "detail": "本对局尚无评书",
+    })
+
+
+@app.post("/v1/games/{game_id}/commentary/generate")
+def trigger_commentary_generation(
+    game_id: int,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+):
+    """Trigger background commentary generation. Idempotent — 409 if already generating/ready."""
+    from datetime import datetime, timezone
+
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status != "finished":
+        raise HTTPException(status_code=425, detail="对局未结束，无法生成评书")
+
+    bh = session.exec(
+        select(BattleHistory).where(BattleHistory.game_id == game_id)
+    ).first()
+
+    if bh and bh.commentary_status == "generating":
+        raise HTTPException(status_code=409, detail="评书生成中，请等待")
+    if bh and bh.commentary_status == "ready":
+        raise HTTPException(status_code=409, detail="评书已存在，如需重新生成请联系管理员")
+
+    # Create BattleHistory if not exists (edge case: game finished without lobby flow)
+    if not bh:
+        bh = BattleHistory(
+            game_id=game_id,
+            model="pvp",
+            winner=game.winner,
+            total_ticks=game.tick,
+            status=game.status,
+        )
+        session.add(bh)
+        session.commit()
+
+    bh.commentary_status = "generating"
+    bh.commentary_started_at = datetime.now(timezone.utc).isoformat()
+    session.add(bh)
+    session.commit()
+
+    from .narrator import generate_full_commentary
+    background_tasks.add_task(generate_full_commentary, game_id)
+
+    return JSONResponse(status_code=202, content={
+        "message": "开始生成评书",
+        "retry_after_sec": 60,
+    })
 
 
 @app.get("/v1/games/{game_id}/replay")
