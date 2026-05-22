@@ -226,7 +226,7 @@ def get_lobby_status(session: Session) -> dict:
     game = get_active_game(session)
 
     # Drive tick advancement — browser polls this every 3s
-    if game.mode == "pvp" and game.status in ("active", "paused", "countdown"):
+    if game.mode == "pvp" and game.status in ("lobby", "active", "paused", "countdown"):
         try:
             eng.pvp_maybe_advance(session, game.id)
         except Exception:
