@@ -2601,6 +2601,8 @@ def pvp_maybe_advance(session: Session, game_id: int):
                     session.add(game)
                     session.commit()
                     print(f"[pvp_tick] Game #{game_id} countdown finished — now active")
+                    # Fill any remaining open slots with managed AI
+                    _ensure_managed_for_open_slots(session, game_id)
                     # Trigger managed agent decisions for tick 0
                     managed = session.exec(
                         select(Agent).where(

@@ -68,8 +68,7 @@ def _create_active_game(session: Session) -> Game:
     game.is_active = True
     game.is_current = True
     game.started_at = _now()
-    game.status = "active"
-    game.tick_started_at = _now()
+    game.status = "lobby"
     session.add(game)
 
     # Create 3 open slots
@@ -83,12 +82,8 @@ def _create_active_game(session: Session) -> Game:
 
     session.commit()
     session.refresh(game)
-
-    # Auto-register managed AI agents (via engine's managed defaults)
-    _ensure_managed_agents(session, game)
-
-    # Trigger initial decisions for managed agents
-    _trigger_managed_decisions(session, game)
+    # Managed AI agents are NOT auto-created here — countdown→active
+    # transition in pvp_maybe_advance will fill remaining open slots.
 
     return game
 
