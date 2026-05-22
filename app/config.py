@@ -42,12 +42,20 @@ ENFORCE_ONE_FACTION_PER_IP: bool = os.environ.get(
 OCCUPATION_REWARD_GRAIN: int = int(os.environ.get("OCCUPATION_REWARD_GRAIN", "200"))
 
 # Economic catch-up: bonus grain for factions behind in city count.
-# Disabled by default — enable after observing occupation reward effects.
 ECONOMIC_CATCHUP_ENABLED: bool = os.environ.get(
-    "ECONOMIC_CATCHUP_ENABLED", "false"
+    "ECONOMIC_CATCHUP_ENABLED", "true"
 ).lower() == "true"
 ECONOMIC_CATCHUP_PER_CITY_BEHIND: float = float(
     os.environ.get("ECONOMIC_CATCHUP_PER_CITY_BEHIND", "0.10")
+)
+
+# Disadvantaged faction buff: recruitment cost halved when city_count <= avg - 1
+# Only active after tick > DISADVANTAGED_TICK_THRESHOLD (avoids false positives early)
+DISADVANTAGED_RECRUIT_COST_MULTIPLIER: float = float(
+    os.environ.get("DISADVANTAGED_RECRUIT_COST_MULTIPLIER", "0.5")
+)
+DISADVANTAGED_TICK_THRESHOLD: int = int(
+    os.environ.get("DISADVANTAGED_TICK_THRESHOLD", "5")
 )
 
 # Managed AI: when enabled, empty faction slots are filled by rule-based AI agents.

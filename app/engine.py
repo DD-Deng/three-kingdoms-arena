@@ -328,7 +328,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
     your_resources = resources.get(your_faction, {"grain": 0})
 
     # ── 合法动作 ──────────────────────────────────────────
-    valid_actions = _compute_valid_actions(cities, your_faction, your_resources)
+    valid_actions = _compute_valid_actions(cities, your_faction, your_resources, game)
 
     # ── 公开事件（上回合） ────────────────────────────────
     public_events = []
@@ -481,6 +481,8 @@ def get_state(session: Session, game_id: int, agent: Agent):
         "idle_ticks": idle_ticks,
         "idle_penalty_active": idle_penalty_active,
         "idle_penalty_suppressed_reason": idle_penalty_suppressed_reason,
+        "disadvantaged_status": is_disadvantaged_faction(your_faction, game, cities),
+        "recruit_cost_multiplier": get_recruit_cost_multiplier(your_faction, game, cities),
     }
 
 
@@ -557,7 +559,7 @@ def _defense_status(level: int) -> str:
         return "exposed"
 
 
-def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[dict]:
+def _compute_valid_actions(cities, your_faction: str, resources: dict, game=None) -> list[dict]:
     own_cities = [c for c in cities if c.owner == your_faction]
     grain = resources.get("grain", 0)
     actions = []
@@ -583,7 +585,8 @@ def _compute_valid_actions(cities, your_faction: str, resources: dict) -> list[d
         actions.append({"type": "defend", "target": c.name})
 
     recruit_cost_per_unit = 3 if resources.get("recruit_penalty") else 2
-    max_recruit = min(MAX_RECRUIT_PER_CITY, grain // recruit_cost_per_unit)
+    cost_mult = get_recruit_cost_multiplier(your_faction, game, cities)
+    max_recruit = min(MAX_RECRUIT_PER_CITY, grain // max(1, round(recruit_cost_per_unit * cost_mult)))
     if max_recruit > 0:
         for c in own_cities:
             actions.append({
@@ -722,7 +725,8 @@ def submit_actions(
             if not target_city or target_city.owner != agent.faction:
                 raise ValueError(f"招募目标 [{target}] 不归你控制")
             recruit_cost_per_unit = 3 if faction_res.get("recruit_penalty") else 2
-            total_grain_cost += amount * recruit_cost_per_unit
+            cost_multiplier = get_recruit_cost_multiplier(agent.faction, game, cities)
+            total_grain_cost += round(amount * recruit_cost_per_unit * cost_multiplier)
 
         elif action_type == "march":
             from_name = act["from"]
@@ -1545,7 +1549,7 @@ def tick(session: Session, game_id: int):
 
     # ── 5. 粮草收入 + 债务结算 ──────────────────────────
     # resources 已在 §2 中加载，包含 _defense_works
-    from .config import ECONOMIC_CATCHUP_ENABLED, ECONOMIC_CATCHUP_PER_CITY_BEHIND
+    from .config import ECONOMIC_CATCHUP_ENABLED, ECONOMIC_CATCHUP_PER_CITY_BEHIND, DISADVANTAGED_TICK_THRESHOLD
     updated_cities = session.exec(select(City).where(City.game_id == game_id)).all()
     owned_by_faction: dict[str, int] = {}
     for faction in FACTION_POOL:
@@ -1591,6 +1595,18 @@ def tick(session: Session, game_id: int):
         if resources[faction]["grain"] >= 0 and resources[faction].get("recruit_penalty"):
             del resources[faction]["recruit_penalty"]
             resources[faction]["debt"] = 0
+
+        # ── 经济补贴事件（首次进入 disadvantaged 时公开） ────
+        if game.tick > DISADVANTAGED_TICK_THRESHOLD:
+            is_now = is_disadvantaged_faction(faction, game, updated_cities)
+            was = resources[faction].get("_was_disadvantaged", False)
+            if is_now and not was:
+                combat_events.append({
+                    "kind": "economy_buff",
+                    "faction": faction,
+                    "text": f"民心思变，征兵成本减半",
+                })
+            resources[faction]["_was_disadvantaged"] = is_now
 
     # ── 追加外交历史 ──────────────────────────────────────
     history = resources.get("_diplomacy_history", [])
@@ -2938,6 +2954,34 @@ def build_public_factions(game, cities: list) -> dict[str, dict]:
             "alliance_with": fres.get("alliance_with"),
         }
     return result
+
+
+def is_disadvantaged_faction(faction: str, game, cities: list) -> bool:
+    """True if faction's city count <= average - 1 AND tick > threshold.
+
+    Only active factions (with at least 1 agent) count toward the average.
+    """
+    from .config import DISADVANTAGED_TICK_THRESHOLD
+
+    if game.tick <= DISADVANTAGED_TICK_THRESHOLD:
+        return False
+
+    active_factions = {c.owner for c in cities if c.owner is not None}
+    if not active_factions:
+        return False
+
+    faction_cities = sum(1 for c in cities if c.owner == faction)
+    avg = len([c for c in cities if c.owner is not None]) / len(active_factions)
+    return faction_cities <= (avg - 1) and faction_cities > 0
+
+
+def get_recruit_cost_multiplier(faction: str, game, cities: list) -> float:
+    """Return recruit cost multiplier for a faction (1.0 normal, 0.5 disadvantaged)."""
+    from .config import DISADVANTAGED_RECRUIT_COST_MULTIPLIER
+
+    if is_disadvantaged_faction(faction, game, cities):
+        return DISADVANTAGED_RECRUIT_COST_MULTIPLIER
+    return 1.0
 
 
 def current_game_state(session: Session) -> dict:
