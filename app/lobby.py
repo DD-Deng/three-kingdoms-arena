@@ -246,6 +246,16 @@ def get_lobby_status(session: Session) -> dict:
         )
     ).all())
 
+    # ── Lobby cleanup: reset stale slots to open ──────────
+    if game.status == "lobby":
+        for s in slots:
+            if s.status in ("disconnected", "ai_managed"):
+                s.status = "open"
+                s.ready = False
+                s.session_token = None
+                session.add(s)
+        session.commit()
+
     # Build slot statuses
     slots_status = {}
     for faction in FACTION_POOL:
