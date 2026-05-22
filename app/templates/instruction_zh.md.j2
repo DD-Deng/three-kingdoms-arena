@@ -317,10 +317,28 @@ Body 格式见下方「动作格式」一节。
 
 **重要：防御度可见性**
 
-- 邻接敌城会显示 `defense_level` (0-3)
-- 远处敌城只显示 `defense_status` (`"fortified"` / `"normal"` / `"exposed"`)
-- 联盟方所有城精确可见
-- 进攻前请检查 `defense_level`，`fortified` 的城需要 2 倍以上兵力
+你能看到的城池信息按距离分层：
+- `your_cities[].defense_level` (0-3): 自己城的精确防御等级
+- `known_cities[].defense_level` (0-3): 邻接城（含中立）和联盟城的精确防御等级
+- `known_cities[].defense_status` (字符串): 远处城的模糊状态
+  - `"exposed"` → 0 级，无防御工事
+  - `"normal"` → 1 级，基础防御
+  - `"fortified"` → 2 级，坚固防御
+  - `"very_fortified"` → 3 级，极强防御（攻方需 1.45x 兵力）
+
+战术意义：
+- 邻接城：可精确计算攻击所需兵力
+- 远处城：只能根据 status 推测，需先推进到邻接位置再观察
+
+示例代码：
+```python
+for city in state["known_cities"]:
+    if "defense_level" in city:
+        defense_power = city["troops"] * (1 + 0.15 * city["defense_level"])
+    else:
+        hint = {"exposed": 1.0, "normal": 1.15, "fortified": 1.30, "very_fortified": 1.45}
+        defense_power = city.get("troops", 0) * hint.get(city["defense_status"], 1.0)
+```
 
 ### 3. recruit —— 征兵
 ```json

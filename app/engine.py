@@ -547,7 +547,9 @@ def _classify_troops(troops: int) -> str:
 
 def _defense_status(level: int) -> str:
     """防御度 → 模糊状态 (邻接/联盟外可见)。"""
-    if level >= 2:
+    if level >= 3:
+        return "very_fortified"
+    elif level == 2:
         return "fortified"
     elif level == 1:
         return "normal"
