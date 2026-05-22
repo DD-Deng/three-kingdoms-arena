@@ -332,3 +332,4 @@ MIT License © 2026 DD-Deng
   <a href="https://github.com/DD-Deng/three-kingdoms-arena/issues"><strong>Issues</strong></a> ·
   <a href="https://github.com/DD-Deng/three-kingdoms-arena/discussions"><strong>Discussions</strong></a>
 </p>
+# auto-deploy test Fri 22 May 2026 21:33:08 +07
