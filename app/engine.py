@@ -2621,6 +2621,41 @@ def pvp_maybe_advance(session: Session, game_id: int):
         # Still in countdown — don't do anything else
         return
 
+    # ── Lobby timeout: fill empty slots with AI after deadline ──
+    if game.status == "lobby" and game.started_at:
+        from .config import LOBBY_TIMEOUT_SEC, MIN_PLAYERS_TO_START
+        try:
+            started = datetime.fromisoformat(game.started_at)
+            elapsed = (now_dt - started).total_seconds()
+            if elapsed >= LOBBY_TIMEOUT_SEC:
+                all_slots = session.exec(
+                    select(SlotModel).where(SlotModel.game_id == game_id)
+                ).all()
+                occupied_count = sum(1 for s in all_slots if s.status == "occupied")
+                if occupied_count >= MIN_PLAYERS_TO_START:
+                    # Fill remaining open slots with managed AI
+                    _ensure_managed_for_open_slots(session, game_id)
+                    session.flush()
+                    # Mark AI-managed slots as ready
+                    for s in all_slots:
+                        if s.status in ("ai_managed", "open"):
+                            s.status = "ai_managed"
+                            s.ready = True
+                            s.ready_at = now_iso
+                            session.add(s)
+                    session.commit()
+                    # Trigger countdown (inlined to avoid circular import)
+                    from .config import COUNTDOWN_SEC
+                    deadline = now_dt + timedelta(seconds=COUNTDOWN_SEC)
+                    game.status = "countdown"
+                    game.countdown_started_at = now_iso
+                    game.countdown_deadline = deadline.isoformat()
+                    session.add(game)
+                    session.commit()
+                    print(f"[lobby] Game #{game_id} lobby timeout — AI fill + countdown started")
+        except Exception:
+            pass
+
     slots = session.exec(select(SlotModel).where(SlotModel.game_id == game_id)).all()
     agents = session.exec(
         select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
