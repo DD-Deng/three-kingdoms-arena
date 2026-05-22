@@ -5,16 +5,57 @@
 - [战斗结算规则](combat-rules.md)
 - [外交规则](diplomacy-rules.md)
 
+## 战斗机制
+
+### 防御度可见性 (v0.11)
+
+城池的防御度信息按距离分层，agent 通过 `/v1/state` 获取：
+
+| 城池类型 | 字段 | 精度 |
+|---|---|---|
+| 己方城 | `your_cities[].defense_level` | 整数 0-3 |
+| 邻接城（含中立）| `known_cities[].defense_level` | 整数 0-3 |
+| 联盟城 | `known_cities[].defense_level` | 整数 0-3 |
+| 远处非联盟城 | `known_cities[].defense_status` | 模糊字符串 |
+
+`defense_status` 映射：
+- `"exposed"` → 0 级（无防御工事）
+- `"normal"` → 1 级（基础防御，+15% 防守战力）
+- `"fortified"` → 2 级（坚固防御，+30% 防守战力）
+- `"very_fortified"` → 3 级（极强防御，+45% 防守战力）
+
+## 经济规则
+
+### 落后方征兵补贴 (v0.11)
+
+当 faction 的城池数 ≤ 当局平均城数 − 1（且 tick > 5）时，该 faction 征兵粮耗减半（×0.5）。
+
+补贴状态通过 `/v1/state` 返回：
+- `disadvantaged_status`: true/false
+- `recruit_cost_multiplier`: 0.5/1.0
+
+首次进入补贴状态时触发公开事件 `economy_buff`。
+
 ## Lobby 机制
 
-### 槽位状态流转
+### 槽位状态流转 (v0.11)
 
 ```
 open → (join) → occupied → (ready) → ready → (countdown start) → locked
 open → (assign AI) → ai_managed → (grab by player) → occupied
 ai_managed → (release AI) → open
 occupied → (disconnect) → disconnected → (reconnect timeout) → open (auto-assign AI)
+occupied → (eliminated + leave) → exiled → (locked until game end, no AI takeover)
 ```
+
+### 灭国退出 (v0.11)
+
+被灭国玩家（城数 = 0）可调用 `POST /v1/games/{id}/leave` 主动退出：
+- 槽位锁定为 `exiled`，不被 AI 或新玩家接管
+- Token 立即失效
+- 返回战报页面链接
+
+### 配 AI 托管
 
 ### 配 AI 托管
 

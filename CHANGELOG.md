@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.11.0 (2026-05-22) — Balance Overhaul P0
+
+Player reports 003/004 consensus: attack punished too heavily, economic snowball, eliminated players waiting.
+
+### Defense visibility (Phase A)
+- D3 defense now shows `"very_fortified"` (was conflated with D2 `"fortified"`)
+- `/v1/state`: adjacent/allied cities get exact `defense_level`, distant get fuzzy `defense_status`
+- Instruction template updated with defense power calculation example code
+
+### Economic catch-up (Phase B)
+- Disadvantaged factions (city_count ≤ avg − 1, tick > 5): recruit cost ×0.5
+- `/v1/state` new fields: `disadvantaged_status`, `recruit_cost_multiplier`
+- Public `economy_buff` event on first disadvantaged tick
+- Economic catch-up grain bonus enabled by default
+
+### Eliminated player exit (Phase C)
+- `POST /v1/games/{id}/leave` — eliminated players exit early, get battle report link
+- Slot status `exiled` — locked until game end, no AI takeover
+- Token invalidated on leave; slot visible in lobby as exiled
+
+### Other
+- `/v1/lobby/status` and `/current-game` now expose per-faction grain via `build_public_factions()`
+- `/current-game` route registered (was documented but never wired)
+- Commentary system: 4-state pipeline with DeepSeek LLM polish + manual trigger
+- Battle result endpoint `/v1/games/{id}/result` with faction stats and key events
+
 ## 0.3.0 (2026-05-12) — Frontend Lobby
 
 - BYOA 大厅页面：势力槽位卡片 + 一键加入 + 观战小地图
