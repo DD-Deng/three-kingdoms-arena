@@ -403,6 +403,68 @@ def tick_game(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ── POST /v1/games/{game_id}/leave ─────────────────────────
+
+@app.post("/v1/games/{game_id}/leave")
+def leave_game(
+    game_id: int,
+    token: str = Query(...),
+    session: Session = Depends(get_session),
+):
+    """Eliminated player exits early — slot locked as exiled, no AI takeover."""
+    from datetime import datetime, timezone
+    from .models import Slot as SlotModel
+
+    game = session.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="对局不存在")
+    if game.status not in ("active", "paused"):
+        raise HTTPException(status_code=425, detail="对局已结束或未开始")
+
+    agent = _auth(session, game_id, token)
+
+    # Must be truly eliminated (0 cities)
+    cities = session.exec(select(eng.City).where(eng.City.game_id == game_id)).all()
+    owned = sum(1 for c in cities if c.owner == agent.faction)
+    if owned > 0:
+        raise HTTPException(status_code=403, detail="势力尚有城池，无法退出")
+
+    # Mark slot as exiled
+    slot = session.exec(
+        select(SlotModel).where(SlotModel.game_id == game_id, SlotModel.faction == agent.faction)
+    ).first()
+    if slot:
+        slot.status = "exiled"
+        slot.ready = False
+        session.add(slot)
+
+    # Invalidate session token
+    sess = session.get(SessionModel, token)
+    if sess:
+        sess.status = "kicked"
+        session.add(sess)
+
+    # Look up battle_id for redirect
+    bh = session.exec(
+        select(BattleHistory).where(BattleHistory.game_id == game_id)
+    ).first()
+    battle_id = bh.battle_id if bh else None
+
+    # Deactivate agent
+    agent.is_active = False
+    agent.deactivated_at = datetime.now(timezone.utc).isoformat()
+    agent.deactivated_reason = "player_exiled"
+    session.add(agent)
+    session.commit()
+
+    return {
+        "status": "exiled",
+        "faction": agent.faction,
+        "battle_id": battle_id,
+        "redirect_to": f"/battles/{battle_id}" if battle_id else None,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════
 # 公开战报 — /v1/games/{game_id}/result
 # ═══════════════════════════════════════════════════════════════

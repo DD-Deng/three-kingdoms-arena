@@ -285,6 +285,10 @@ def get_lobby_status(session: Session) -> dict:
             info["agent_display_name"] = s.agent_display_name or f"托管AI-{faction}"
             info["ip"] = (s.occupied_by_ip or "")[:8] + "***"
 
+        elif status == "exiled":
+            info["agent_display_name"] = s.agent_display_name
+            info["exited_at"] = s.joined_at
+
         elif status == "disconnected":
             if s.last_heartbeat_at:
                 last = datetime.fromisoformat(s.last_heartbeat_at)

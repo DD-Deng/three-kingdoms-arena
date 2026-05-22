@@ -89,7 +89,7 @@ class Slot(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     game_id: int = Field(foreign_key="game.id")
     faction: str  # 蜀 | 魏 | 吴
-    status: str = Field(default="open")  # open | occupied | disconnected
+    status: str = Field(default="open")  # open | occupied | disconnected | ai_managed | exiled
     session_token: Optional[str] = Field(default=None, index=True)
     last_heartbeat_at: Optional[str] = Field(default=None)
     occupied_by_ip: Optional[str] = Field(default=None)

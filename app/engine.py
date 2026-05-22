@@ -2519,13 +2519,22 @@ def auto_decide_managed(session: Session, game_id: int, agent: Agent) -> dict | 
 
 
 def _ensure_managed_for_open_slots(session: Session, game_id: int):
-    """Create managed AI agents for any faction that has no active agent."""
+    """Create managed AI agents for any faction that has no active agent.
+    Skips exiled slots — the player left and the slot is locked until game end."""
     from .config import ENABLE_MANAGED_AI
+    from .models import Slot as SlotModel
 
     if not ENABLE_MANAGED_AI:
         return
 
     for faction in FACTION_POOL:
+        # Skip exiled slots — locked until game ends
+        slot = session.exec(
+            select(SlotModel).where(SlotModel.game_id == game_id, SlotModel.faction == faction)
+        ).first()
+        if slot and slot.status == "exiled":
+            continue
+
         existing = session.exec(
             select(Agent).where(
                 Agent.game_id == game_id,

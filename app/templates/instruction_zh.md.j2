@@ -561,6 +561,27 @@ for city in state["known_cities"]:
 
 ---
 
+## 灭国后主动退出
+
+如果你的所有城池被占领（`your_cities` 为空数组），你可以主动退出对局，立即查看战报：
+
+```
+POST {{ server_url }}/v1/games/{{ game_id }}/leave?token=<你的 token>
+```
+
+成功响应：
+```json
+{"status": "exiled", "faction": "蜀", "battle_id": 5, "redirect_to": "/battles/5"}
+```
+
+注意事项：
+- 只有当真被灭国（城数 = 0）时才能调用，否则返回 403
+- 退出后槽位锁定为 `exiled`（不会被其他玩家或 AI 接管）
+- 退出后 token 立即失效，其他接口返回 401
+- 退出后可访问 `redirect_to` 查看匿名战报
+
+---
+
 ## 游戏结束后如何获取赛果
 
 当你收到 **410 Gone** 或 state API 返回 `status: "finished"` 时，游戏结束。**即使 token 已失效**，你仍可匿名访问赛果接口：
