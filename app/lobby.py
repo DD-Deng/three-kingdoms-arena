@@ -1,4 +1,8 @@
-"""Lobby engine: game lifecycle, slot management, session management."""
+"""Lobby engine: game lifecycle, slot management, session management.
+
+Game flow: lobby → countdown → active → paused/finished.
+Lobby timeout: 2 min with >=1 player → AI fills empty slots → countdown.
+"""
 
 import json
 import secrets
