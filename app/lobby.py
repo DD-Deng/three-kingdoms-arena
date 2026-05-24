@@ -267,7 +267,15 @@ def get_lobby_status(session: Session) -> dict:
     # ── Lobby cleanup: reset stale slots to open ──────────
     if game.status == "lobby":
         for s in slots:
-            if s.status in ("disconnected", "ai_managed"):
+            if s.status == "disconnected":
+                _release_managed_agent(session, game, s.faction)
+                s.status = "open"
+                s.ready = False
+                s.ready_at = None
+                s.joined_at = None
+                s.session_token = None
+                session.add(s)
+            elif s.status == "ai_managed":
                 s.status = "open"
                 s.ready = False
                 s.ready_at = None
