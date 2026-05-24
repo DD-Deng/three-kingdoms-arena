@@ -506,7 +506,6 @@ def _release_managed_agent(session: Session, game: Game, faction: str):
     from .config import ENABLE_MANAGED_AI
     if not ENABLE_MANAGED_AI:
         return
-    default_names = [eng.MANAGED_DEFAULTS[f]["name"] for f in FACTION_POOL]
     agents = session.exec(
         select(Agent).where(
             Agent.game_id == game.id,
@@ -515,11 +514,10 @@ def _release_managed_agent(session: Session, game: Game, faction: str):
         )
     ).all()
     for a in agents:
-        if a.agent_name in default_names:
-            a.is_active = False
-            a.deactivated_at = _now()
-            a.deactivated_reason = "ai_released"
-            session.add(a)
+        a.is_active = False
+        a.deactivated_at = _now()
+        a.deactivated_reason = "ai_released"
+        session.add(a)
 
 
 def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str):
