@@ -180,13 +180,27 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
         a.deactivated_reason = "game_ended"
         session.add(a)
 
-    # Release all slots
+    # Clear game-level runtime fields (keep data fields: resources,
+    # last_tick_*, chapters — those are part of the post-game record)
+    game.tick_started_at = None
+    game.countdown_started_at = None
+    game.countdown_deadline = None
+    session.add(game)
+
+    # Release all slots — full reset
     slots = session.exec(
         select(Slot).where(Slot.game_id == game.id)
     ).all()
     for s in slots:
         s.status = "open"
         s.session_token = None
+        s.ready = False
+        s.ready_at = None
+        s.joined_at = None
+        s.last_heartbeat_at = None
+        s.occupied_by_ip = None
+        s.occupied_by_persona_hash = None
+        s.agent_display_name = None
         session.add(s)
 
     # Create BattleHistory record for the finished game
@@ -256,6 +270,8 @@ def get_lobby_status(session: Session) -> dict:
             if s.status in ("disconnected", "ai_managed"):
                 s.status = "open"
                 s.ready = False
+                s.ready_at = None
+                s.joined_at = None
                 s.session_token = None
                 session.add(s)
         session.commit()
@@ -317,8 +333,12 @@ def get_lobby_status(session: Session) -> dict:
                         session.add(old_session)
                     s.status = "open"
                     s.session_token = None
+                    s.ready = False
+                    s.ready_at = None
+                    s.joined_at = None
                     s.occupied_by_ip = None
                     s.occupied_by_persona_hash = None
+                    s.agent_display_name = None
                     session.add(s)
 
                     # Deactivate stale agents for this faction so re-join won't 409
@@ -470,6 +490,7 @@ def release_ai_slot(session: Session, faction: str, token: str | None = None) ->
         slot.session_token = None
         slot.ready = False
         slot.ready_at = None
+        slot.joined_at = None
         slot.agent_display_name = None
         session.add(slot)
 
@@ -507,6 +528,8 @@ def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str)
     slot.session_token = None
     slot.ready = False
     slot.ready_at = None
+    slot.joined_at = None
+    slot.last_heartbeat_at = None
     slot.agent_display_name = None
     session.add(slot)
 
