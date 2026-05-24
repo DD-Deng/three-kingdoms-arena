@@ -76,6 +76,10 @@ MANAGED_AI_FORCED_ATTACK_INTERVAL: int = int(os.environ.get("MANAGED_AI_FORCED_A
 # Countdown: seconds from all-3-ready to game start.
 COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
 
+# Paused timeout: if game stays paused with 0 occupied slots for this long,
+# auto-finalize and create a new game.
+PAUSED_TIMEOUT_SEC: int = int(os.environ.get("PAUSED_TIMEOUT_SEC", "300"))
+
 # Lobby timeout: if game stays in lobby for this long with >= MIN_PLAYERS_TO_START
 # occupied slots, fill remaining slots with managed AI and start countdown.
 LOBBY_TIMEOUT_SEC: int = int(os.environ.get("LOBBY_TIMEOUT_SEC", "120"))

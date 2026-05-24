@@ -2666,16 +2666,46 @@ def pvp_maybe_advance(session: Session, game_id: int):
 
     occupied_factions = {s.faction for s in slots if s.status == "occupied"}
 
-    # ── 0 occupied slots → pause ───────────────────────────
+    # ── 0 occupied slots → pause or auto-recover ──────────
     if len(occupied_factions) == 0:
         if game.status == "active":
             game.status = "paused"
             session.add(game)
             session.commit()
             print(f"[pvp_tick] Game #{game_id} paused — no occupied slots")
-        return
+            return
 
-    # ── Paused → resume ────────────────────────────────────
+        if game.status == "paused":
+            # Check auto-recovery timeout
+            from .config import PAUSED_TIMEOUT_SEC
+            heartbeat_times = [s.last_heartbeat_at for s in slots if s.last_heartbeat_at]
+            if heartbeat_times:
+                last_activity = max(heartbeat_times)
+            else:
+                last_activity = game.tick_started_at or game.started_at
+            if last_activity:
+                try:
+                    last_dt = datetime.fromisoformat(last_activity)
+                    if (now_dt - last_dt).total_seconds() > PAUSED_TIMEOUT_SEC:
+                        game.status = "finished"
+                        game.is_active = False
+                        game.is_current = False
+                        game.finished_at = now_iso
+                        game.winner = None
+                        session.add(game)
+                        session.commit()
+                        print(f"[pvp_tick] Game #{game_id} auto-finalized — paused timeout")
+                        from . import lobby
+                        lobby.finish_game(session, game)
+                        return
+                except Exception:
+                    pass
+            # Still within timeout — stay paused, don't resume
+            return
+
+        return  # lobby / countdown / finished — nothing to do
+
+    # ── Paused → resume (occupied slots exist) ─────────────
     if game.status == "paused":
         game.status = "active"
         game.tick_started_at = now_iso
