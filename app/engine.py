@@ -3068,7 +3068,10 @@ def _resolve_max_ticks(session: Session, game_id: int):
     for c in cities:
         if c.owner:
             faction_cities[c.owner] += 1
+
     if not faction_cities:
+        # All factions eliminated — no winner
+        game.winner = None
         game.status = "finished"
     else:
         max_cities = max(faction_cities.values())
@@ -3077,13 +3080,17 @@ def _resolve_max_ticks(session: Session, game_id: int):
             game.winner = winners[0]
             game.status = "finished"
         else:
+            # Tie on cities — break by total troops
             faction_troops: dict[str, int] = defaultdict(int)
             for c in cities:
                 if c.owner:
                     faction_troops[c.owner] += c.troops
-            winner = max(faction_troops, key=faction_troops.get)
-            game.winner = winner
-            game.status = "finished"
+            if not faction_troops:
+                game.winner = None
+                game.status = "finished"
+            else:
+                game.winner = max(faction_troops, key=faction_troops.get)
+                game.status = "finished"
 
     # Mark as not current so next poll triggers a new game
     game.is_current = False
