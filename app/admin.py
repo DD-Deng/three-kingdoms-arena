@@ -1,9 +1,12 @@
 """运营后台 API —— 需要 X-Admin-Token header 鉴权"""
 
 import json
+import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from .database import get_session
@@ -267,4 +270,56 @@ def admin_stats(
         "avg_ticks": round(avg_ticks, 1),
         "model_stats": model_stats,
         "faction_wins": faction_wins,
+    }
+
+
+# ── POST /admin/force-restart ─────────────────────────────────────
+
+@router.post("/force-restart")
+def force_restart(
+    request: Request,
+    confirm: str = Query("no"),
+    session: Session = Depends(get_session),
+):
+    _check_auth(request)
+    if confirm != "yes":
+        return JSONResponse(
+            status_code=400,
+            content={"error": "必须传 confirm=yes 才执行", "hint": "?confirm=yes"},
+        )
+
+    from . import lobby
+    logger = logging.getLogger("admin")
+
+    game = lobby.get_active_game(session)
+    if game is None:
+        return {"status": "no active game"}
+
+    old_id = game.id
+
+    # Mark finished
+    game.status = "finished"
+    game.is_active = False
+    game.is_current = False
+    game.finished_at = datetime.now(timezone.utc).isoformat()
+    game.winner = None
+    session.add(game)
+    session.commit()
+
+    # Run full cleanup + create new game
+    lobby.finish_game(session, game)
+
+    new_game = lobby.get_active_game(session)
+    new_id = new_game.id if new_game else None
+
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown")
+    logger.info(
+        f"Admin force-restart: old game {old_id} → new game {new_id}, IP={client_ip}"
+    )
+
+    return {
+        "status": "ok",
+        "old_game_id": old_id,
+        "new_game_id": new_id,
+        "new_status": new_game.status if new_game else "unknown",
     }
