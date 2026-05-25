@@ -22,7 +22,7 @@ export default function BattlesPage() {
   if (loading) return <div className="bt-loading">加载中…</div>
   if (error) return <div className="bt-error">加载失败: {error}</div>
 
-  const battles = data?.battles || []
+  const battles = (data?.battles || []).filter(b => b.total_ticks > 0 || b.winner)
 
   return (
     <div className="bt-page">
