@@ -530,6 +530,14 @@ def _release_managed_agent(session: Session, game: Game, faction: str):
 
 def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str):
     """Release a player-occupied slot."""
+    # Deactivate player's session before clearing slot token
+    token = slot.session_token
+    if token:
+        sess = session.get(SessionModel, token)
+        if sess:
+            sess.status = "kicked"
+            session.add(sess)
+
     slot.status = "open"
     slot.session_token = None
     slot.ready = False
@@ -538,13 +546,6 @@ def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str)
     slot.last_heartbeat_at = None
     slot.agent_display_name = None
     session.add(slot)
-
-    # Deactivate player's session
-    if slot.session_token:
-        sess = session.get(SessionModel, slot.session_token)
-        if sess:
-            sess.status = "kicked"
-            session.add(sess)
 
     _release_managed_agent(session, game, faction)
 
