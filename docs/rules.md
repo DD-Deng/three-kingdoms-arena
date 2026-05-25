@@ -90,6 +90,24 @@ occupied → (eliminated + leave) → exiled → (locked until game end, no AI t
 - 宽限期过后自动释放给托管 AI
 - 前端文案："该位置玩家掉线，XmYs 后自动释放给托管 AI（也可立即点击抢占）"
 
+## Token 生命周期 (v0.12 — P0-T)
+
+Token 跟随对局生命周期，无独立硬过期时间。
+
+**Token 失效条件**（任一满足即失效）：
+- 🔴 **对局结束**：对局 status → `finished` 时，该局所有 token 失效
+- 🟡 **主动退出**：玩家调 `POST /v1/lobby/release-ai` 释放槽位
+- 🟡 **断线超时**：heartbeat 停止超过 5 分钟（300s grace period）
+
+**Token 有效状态**：
+- ✅ 对局 `lobby` / `countdown` / `active` / `paused` 状态下
+- ✅ 断线 5 分钟宽限期内
+
+**对应 API 行为**：
+- `POST /v1/lobby/join` 返回 `expires_at: null`
+- `GET /games/{id}/state` 返回 `your_token_expires_in_sec: null`
+- 旧 token 被拒时返回 401 `AUTH_INVALID_TOKEN` 或 410 `PROTOCOL_GAME_FINISHED`
+
 ### 5 秒倒计时
 
 - 3 方 occupy + ready → 服务器进入 countdown

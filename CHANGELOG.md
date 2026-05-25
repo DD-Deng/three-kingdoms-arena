@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.0 (2026-05-25) — Token Lifecycle Bound to Game (P0-T)
+
+Token 生命周期绑定对局，移除 2 小时硬过期。
+
+### Token Lifecycle
+- 移除 `SESSION_MAX_AGE_SEC` (7200s) 硬过期
+- Token 在对局 `finished`、玩家主动 `release`、或断线超 5 分钟时失效
+- `POST /v1/lobby/join` 返回 `expires_at: null`
+- `GET /games/{id}/state` 返回 `your_token_expires_in_sec: null`
+- Grace period 从 10 分钟缩短为 5 分钟
+
+### Lifecycle Bug Fixes
+- P0-1: slot 字段清理彻底化（9 字段全清 + game 级运行时字段）
+- P0-1.6: lobby cleanup 路径 deactivate ghost BYOA agent
+- P0-2: paused 自愈机制（5 分钟超时 auto-finalize）
+- P0-4: `_resolve_max_ticks` 边界崩溃保护
+- `_release_player_slot` 死代码修复（session 正确标记 kicked）
+
+### Infrastructure
+- Railway Volume 挂载 `/data`，DB + logs 持久化
+- Admin `POST /api/admin/force-restart` 端点
+- Frontend: "Session Token · 仅本局有效" 文案更新
+
 ## 0.11.0 (2026-05-22) — Balance Overhaul P0
 
 Player reports 003/004 consensus: attack punished too heavily, economic snowball, eliminated players waiting.

@@ -13,7 +13,7 @@
 | **阵营** | {{ faction }} |
 | **Game ID** | {{ game_id }} |
 | **Session Token** | `{{ session_token }}` |
-| **Token 有效期** | 2 小时（过期需重新加入） |
+| **Token 有效期** | 本局有效（对局结束、主动退出或断线超 5 分钟后失效） |
 | **Server URL** | {{ server_url }} |
 
 > 你的 token 已在服务器注册。下面所有 API 请求带上 `?token={{ session_token }}` 即完成认证。
@@ -494,7 +494,7 @@ for city in state["known_cities"]:
 | error_code | HTTP | 含义 |
 |------------|------|------|
 | `AUTH_INVALID_TOKEN` | 401 | token 无效 |
-| `AUTH_SESSION_EXPIRED` | 401 | 会话已过期 |
+| `AUTH_SESSION_EXPIRED` | 401 | 会话已过期（断线超时 / 主动退出） |
 | `AUTH_SESSION_KICKED` | 403 | 会话已被踢出 |
 | `AUTH_FACTION_OCCUPIED` | 409 | 势力已被占用 |
 
@@ -509,7 +509,7 @@ for city in state["known_cities"]:
 - 如果 `state.game_paused == true`，说明 0 个玩家在线、游戏暂停中。有人加入后自动恢复。
 - 开局前，先调用 `POST /v1/lobby/ready` 声明就绪。3 方 ready 后 {{ COUNTDOWN_SEC }} 秒倒计时开始。
 - 通过 `GET /v1/lobby/status` 可查看倒计时状态（`countdown_deadline`）和各阵营 ready 状态。
-- 你的 token 有效期 2 小时。`state.your_token_expires_in_sec` 返回剩余秒数，可据此提前 reconnect。
+- 你的 token 跟随本局生命周期。对局结束、你主动退出、或断线超过 5 分钟，token 自动失效。`state.your_token_expires_in_sec` 现固定返回 `null`。
 - 每个 tick 检查 `state.tick_elapsed_sec` 可以知道本回合已过去多少秒。
 
 ---
@@ -615,7 +615,7 @@ GET {{ server_url }}/v1/games/{{ game_id }}/result
 >
 > **唯一不能改的**：API 协议（端点、字段名、JSON 格式）。改了 agent 就会收到 400。
 >
-> 你的 token 在 **2 小时**后失效。对局结束后如果想再战，回到网站重新获取 token。
+> 你的 token 跟随本局生命周期。对局结束后如果想再战，回到网站重新获取 token。
 
 ---
 
