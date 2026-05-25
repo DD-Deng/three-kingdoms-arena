@@ -413,58 +413,135 @@ def leave_game(
     token: str = Query(...),
     session: Session = Depends(get_session),
 ):
-    """Eliminated player exits early — slot locked as exiled, no AI takeover."""
+    """Player-initiated exit from a game. Covers all game states.
+
+    - lobby/countdown: cancel join, release slot to open
+    - active/paused + alive: AI takes over the slot (slot → ai_managed)
+    - active/paused + eliminated: slot locked as exiled, redirect to battle report
+    - finished: error (game already over)
+    """
     from datetime import datetime, timezone
     from .models import Slot as SlotModel
 
     game = session.get(Game, game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="对局不存在")
-    if game.status not in ("active", "paused"):
-        raise HTTPException(status_code=425, detail="对局已结束或未开始")
+    if game.status == "finished":
+        raise HTTPException(status_code=400, detail="对局已结束，无需退出")
 
     agent = _auth(session, game_id, token)
+    faction = agent.faction
 
-    # Must be truly eliminated (0 cities)
-    cities = session.exec(select(eng.City).where(eng.City.game_id == game_id)).all()
-    owned = sum(1 for c in cities if c.owner == agent.faction)
-    if owned > 0:
-        raise HTTPException(status_code=403, detail="势力尚有城池，无法退出")
-
-    # Mark slot as exiled
     slot = session.exec(
-        select(SlotModel).where(SlotModel.game_id == game_id, SlotModel.faction == agent.faction)
+        select(SlotModel).where(SlotModel.game_id == game_id, SlotModel.faction == faction)
     ).first()
-    if slot:
-        slot.status = "exiled"
-        slot.ready = False
-        session.add(slot)
 
-    # Invalidate session token
+    # Invalidate session
     sess = session.get(SessionModel, token)
     if sess:
         sess.status = "kicked"
         session.add(sess)
 
-    # Look up battle_id for redirect
-    bh = session.exec(
-        select(BattleHistory).where(BattleHistory.game_id == game_id)
-    ).first()
-    battle_id = bh.battle_id if bh else None
+    # ── lobby / countdown: simple cancel ──────────────────
+    if game.status in ("lobby", "countdown"):
+        if slot:
+            slot.status = "open"
+            slot.session_token = None
+            slot.ready = False
+            slot.ready_at = None
+            slot.joined_at = None
+            slot.last_heartbeat_at = None
+            slot.occupied_by_ip = None
+            slot.agent_display_name = None
+            session.add(slot)
 
-    # Deactivate agent
-    agent.is_active = False
-    agent.deactivated_at = datetime.now(timezone.utc).isoformat()
-    agent.deactivated_reason = "player_exiled"
-    session.add(agent)
-    session.commit()
+        agent.is_active = False
+        agent.deactivated_at = datetime.now(timezone.utc).isoformat()
+        agent.deactivated_reason = "cancelled_join"
+        session.add(agent)
+        session.commit()
 
-    return {
-        "status": "exiled",
-        "faction": agent.faction,
-        "battle_id": battle_id,
-        "redirect_to": f"/battles/{battle_id}" if battle_id else None,
-    }
+        # Cancel countdown if this was the 3rd player leaving
+        if game.status == "countdown":
+            lobby._check_all_ready(session, game_id)
+
+        return {
+            "status": "ok",
+            "redirect_to": "/",
+            "context": "cancelled_join",
+        }
+
+    # ── active / paused ───────────────────────────────────
+    if game.status in ("active", "paused"):
+        cities = session.exec(select(eng.City).where(eng.City.game_id == game_id)).all()
+        city_count = sum(1 for c in cities if c.owner == faction)
+
+        if city_count > 0:
+            # Still alive → AI takeover
+            if slot:
+                slot.status = "ai_managed"
+                slot.session_token = None
+                slot.ready = True
+                slot.ready_at = datetime.now(timezone.utc).isoformat()
+                slot.agent_display_name = f"托管AI-{faction}"
+                session.add(slot)
+
+            agent.is_active = False
+            agent.deactivated_at = datetime.now(timezone.utc).isoformat()
+            agent.deactivated_reason = "player_quit_active"
+            session.add(agent)
+            session.commit()
+
+            # Create managed AI to take over
+            eng._ensure_managed_for_open_slots(session, game_id)
+
+            # Trigger initial decision for the new managed agent
+            try:
+                managed = session.exec(
+                    select(Agent).where(
+                        Agent.game_id == game_id,
+                        Agent.faction == faction,
+                        Agent.agent_mode == "managed",
+                        Agent.is_active == True,
+                    )
+                ).first()
+                if managed:
+                    eng.auto_decide_managed(session, game_id, managed)
+            except Exception:
+                pass
+
+            return {
+                "status": "ok",
+                "redirect_to": "/",
+                "context": "ai_taken_over",
+            }
+        else:
+            # Eliminated → exiled
+            if slot:
+                slot.status = "exiled"
+                slot.ready = False
+                session.add(slot)
+
+            agent.is_active = False
+            agent.deactivated_at = datetime.now(timezone.utc).isoformat()
+            agent.deactivated_reason = "player_exiled"
+            session.add(agent)
+            session.commit()
+
+            # Look up battle_id for redirect
+            bh = session.exec(
+                select(BattleHistory).where(BattleHistory.game_id == game_id)
+            ).first()
+            battle_id = bh.battle_id if bh else None
+
+            return {
+                "status": "ok",
+                "redirect_to": f"/battles/{battle_id}" if battle_id else "/battles",
+                "context": "exiled_viewing_battle",
+                "battle_id": battle_id,
+            }
+
+    raise HTTPException(status_code=400, detail="无法退出当前对局状态")
 
 
 # ═══════════════════════════════════════════════════════════════
