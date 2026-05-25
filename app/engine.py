@@ -379,23 +379,9 @@ def get_state(session: Session, game_id: int, agent: Agent):
     # ── 宣战信息: 是否有人对你宣战 ────────────────────────
     war_revealed_by = resources_raw.get(your_faction, {}).get("war_revealed_by")
 
-    # ── Token expiry ───────────────────────────────────────
-    from .lobby import SESSION_MAX_AGE_SEC
-    from .models import Session as SessionModel
-
+    # ── Token lifecycle is game-bound — no time-based expiry ──
     your_token_expires_at: str | None = None
     your_token_expires_in_sec: int | None = None
-    sess = session.get(SessionModel, agent.token)
-    if sess and sess.created_at:
-        try:
-            created = datetime.fromisoformat(sess.created_at)
-            expires_dt = created + timedelta(seconds=SESSION_MAX_AGE_SEC)
-            your_token_expires_at = expires_dt.isoformat()
-            your_token_expires_in_sec = max(0, int(
-                (expires_dt - datetime.now(timezone.utc)).total_seconds()
-            ))
-        except Exception:
-            pass
 
     # ── Tick timing diagnostics ────────────────────────────
     from .config import TICK_TIMEOUT_SEC

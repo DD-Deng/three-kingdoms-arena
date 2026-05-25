@@ -15,8 +15,7 @@ from . import engine as eng
 
 FACTION_POOL = ["蜀", "魏", "吴"]
 SLOT_HEARTBEAT_TIMEOUT_SEC = 30       # 30s no heartbeat → disconnected
-RECONNECT_GRACE_SEC = 600             # 10 min grace period for reconnection
-SESSION_MAX_AGE_SEC = 7200            # 2 hour hard expiry
+RECONNECT_GRACE_SEC = 300             # 5 min grace period for reconnection
 MAX_ACTIVE_SESSIONS_PER_IP = 1        # one IP → one active session
 
 
@@ -841,15 +840,11 @@ def join_slot(
     except Exception:
         pass
 
-    expires_at = datetime.now(timezone.utc).timestamp() + SESSION_MAX_AGE_SEC
-    from datetime import datetime as dt
-    expires_iso = dt.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
-
     return {
         "session_token": token,
         "game_id": game.id,
         "faction": faction,
-        "expires_at": expires_iso,
+        "expires_at": None,
         "instruction_url": f"/v1/lobby/instruction?token={token}",
     }
 
@@ -946,15 +941,8 @@ def validate_session(session: Session, token: str) -> SessionModel:
     if sess.status == "kicked":
         raise ValueError("会话已被踢出")
 
-    # Check 30-min hard expiry
-    created = datetime.fromisoformat(sess.created_at)
-    age = (datetime.now(timezone.utc) - created).total_seconds()
-    if age > SESSION_MAX_AGE_SEC:
-        sess.status = "kicked"
-        session.add(sess)
-        session.commit()
-        raise ValueError("session_token 已过期（2 小时）")
-
+    # Token lifecycle is bound to game lifecycle — no independent expiry.
+    # Token invalidates when: game finishes, player releases, or disconnect > grace period.
     return sess
 
 
