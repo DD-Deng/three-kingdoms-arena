@@ -2734,8 +2734,9 @@ def pvp_maybe_advance(session: Session, game_id: int):
                 pass
         return
 
-    # ── Check submission: only occupied-faction agents matter ──
-    active_agents = [a for a in agents if a.faction in occupied_factions]
+    # ── Check submission: occupied + ai_managed factions ──
+    managed_factions = {s.faction for s in slots if s.status == "ai_managed"}
+    active_agents = [a for a in agents if a.faction in (occupied_factions | managed_factions)]
     if not active_agents:
         return
 
