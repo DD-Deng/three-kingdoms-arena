@@ -41,6 +41,7 @@ function slotUI(slot, faction, gameStatus) {
         ? { label: '已就绪', cssClass: 'ready', description: `${slot?.agent_display_name || ''} · IP ${slot?.ip || '***'}`, canAct: false }
         : { label: '未就绪', cssClass: 'occupied', description: `${slot?.agent_display_name || ''} · IP ${slot?.ip || '***'}`, canAct: true, actions: ['ready'] }
     case 'disconnected': return { label: '掉线', cssClass: 'disconnected', description: `已断开 ${fmtDuration(slot?.disconnected_sec)}`, canAct: true, actions: ['grab'] }
+    case 'exiled': return { label: '玩家已退出', cssClass: 'exiled', description: `${faction} · 灭国后退出`, canAct: false }
     default: return { label: s, cssClass: '', description: '', canAct: false }
   }
 }
@@ -209,11 +210,30 @@ export default function HomePage() {
               {hasSavedSession && (
                 <div className="lb-s-banner">
                   <span>✓ 你已加入 {f} 阵营 · Token 本局有效</span>
-                  <button className="lb-s-banner-btn" onClick={() => {
-                    setModalPhase('done')
-                    setModalFaction(f)
-                    setSavedResult(saved)  // pass localStorage data as preResult
-                  }}>📋 查看接入指令</button>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <button className="lb-s-banner-btn" style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
+                      onClick={() => {
+                        const token = saved?.token || saved?.session_token
+                        if (!token) return
+                        fetch(`/v1/games/${gameId}/leave?token=${encodeURIComponent(token)}`, { method: 'POST' })
+                          .then(r => r.json().then(d => ({ ok: r.ok, ...d })))
+                          .then(data => {
+                            if (!data.ok) { alert(data.detail || '退出失败'); return }
+                            try {
+                              const sessions = JSON.parse(localStorage.getItem('arena_sessions') || '{}')
+                              delete sessions[f]
+                              localStorage.setItem('arena_sessions', JSON.stringify(sessions))
+                            } catch {}
+                            window.location.href = data.redirect_to || '/'
+                          })
+                          .catch(() => alert('退出请求失败'))
+                      }}>✕ 退出</button>
+                    <button className="lb-s-banner-btn" onClick={() => {
+                      setModalPhase('done')
+                      setModalFaction(f)
+                      setSavedResult(saved)
+                    }}>📋 查看接入指令</button>
+                  </span>
                 </div>
               )}
               <div className="lb-s-faction" style={{ color: FACTION_COLORS[f] }}>
@@ -249,9 +269,12 @@ export default function HomePage() {
       {/* ── Join modal ───────────────────────────── */}
       {modalFaction && (
         <JoinModal faction={modalFaction} gameId={gameId}
+          gameStatus={gameStatus}
+          factionCityCount={data?.factions?.[modalFaction]?.cities}
           onClose={() => { setModalFaction(null); setModalPhase(null); setSavedResult(null) }}
           initialPhase={modalPhase || 'confirm'}
-          preResult={savedResult} />
+          preResult={savedResult}
+          onLeave={(data) => { setModalFaction(null); setModalPhase(null); setSavedResult(null); if (data.redirect_to) window.location.href = data.redirect_to }} />
       )}
     </div>
   )

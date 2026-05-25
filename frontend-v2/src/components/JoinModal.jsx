@@ -60,12 +60,14 @@ function CopyButton({ text, label, copiedLabel }) {
 }
 
 // ── Main modal ─────────────────────────────────────
-export default function JoinModal({ faction, gameId, onClose, initialPhase, preResult }) {
+export default function JoinModal({ faction, gameId, gameStatus, factionCityCount, onClose, initialPhase, preResult, onLeave }) {
   const [phase, setPhase] = useState(initialPhase || 'confirm')
   const [result, setResult] = useState(preResult || null)
   const [instruction, setInstruction] = useState(null)
   const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState(true)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   const monarch = FACTION_MONARCHS[faction]
   // result.token matches localStorage saveSession; result.session_token matches fresh join API response
@@ -144,6 +146,45 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
   }, [phase === 'loading'])
 
   const onOverlayClick = (e) => { if (e.target === e.currentTarget) onClose() }
+
+  // ── Leave button logic ──────────────────────────────
+  const status = gameStatus || ''
+  const cityCount = factionCityCount ?? -1
+  const canLeave = result && tokenValue && gameId
+  const isEliminated = cityCount === 0
+  const isAlive = cityCount > 0
+  const inLobby = status === 'lobby' || status === 'countdown'
+  const inGame = status === 'active' || status === 'paused'
+
+  let leaveLabel = '退出'
+  let leaveNeedsConfirm = false
+  if (inLobby) { leaveLabel = '取消加入'; leaveNeedsConfirm = false }
+  else if (inGame && isAlive) { leaveLabel = '放弃对局'; leaveNeedsConfirm = true }
+  else if (inGame && isEliminated) { leaveLabel = '退出查看战报'; leaveNeedsConfirm = true }
+
+  function doLeave() {
+    if (!canLeave) return
+    setLeaving(true)
+    fetch(`/v1/games/${gameId}/leave?token=${encodeURIComponent(tokenValue)}`, { method: 'POST' })
+      .then(async r => {
+        if (!r.ok) { const t = await r.text(); try { const j = JSON.parse(t); setError(j.detail || `HTTP ${r.status}`) } catch { setError(`HTTP ${r.status}`) }; return null }
+        return r.json()
+      })
+      .then(data => {
+        if (!data) { setLeaving(false); return }
+        // Clear localStorage for this faction
+        try {
+          const sessions = JSON.parse(localStorage.getItem('arena_sessions') || '{}')
+          delete sessions[faction]
+          localStorage.setItem('arena_sessions', JSON.stringify(sessions))
+        } catch {}
+        setLeaving(false)
+        setConfirmLeave(false)
+        if (onLeave) onLeave(data)
+        else if (data.redirect_to) { window.location.href = data.redirect_to }
+      })
+      .catch(() => setLeaving(false))
+  }
 
   return (
     <div className="jm-overlay" onClick={onOverlayClick}>
@@ -244,6 +285,36 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
               <button className="btn-ghost" onClick={onClose}>关闭</button>
               <span className="jm-footer-hint">关闭后可在大厅页对应阵营卡上重新查看</span>
             </div>
+
+            {/* e) Leave button */}
+            {canLeave && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                {!confirmLeave ? (
+                  <button className="btn-ghost" style={{ color: 'var(--accent)', width: '100%' }}
+                    onClick={() => leaveNeedsConfirm ? setConfirmLeave(true) : doLeave()}>
+                    {leaveLabel}
+                  </button>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: 'var(--ink-dim)', fontSize: 'var(--fs-sm)', marginBottom: 8 }}>
+                      {isAlive ? `你的 ${faction} 阵营将由 AI 接管继续打。Token 立即失效。` : `你将跳转到战报页面查看本局结果。`}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                      <button className="btn-ghost" onClick={() => setConfirmLeave(false)} disabled={leaving}>取消</button>
+                      <button className="btn-primary" onClick={doLeave} disabled={leaving}
+                        style={{ background: 'var(--accent)' }}>
+                        {leaving ? '处理中…' : isAlive ? '确认放弃' : '退出查看战报'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* f) Leave error */}
+            {error && (
+              <p style={{ color: 'var(--accent)', fontSize: 'var(--fs-sm)', marginTop: 8, textAlign: 'center' }}>{error}</p>
+            )}
           </div>
         )}
       </div>
