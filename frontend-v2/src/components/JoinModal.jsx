@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { api } from '../api'
 import { FACTION_COLORS, FACTION_MONARCHS } from '../constants'
@@ -30,19 +30,6 @@ function getSession(faction) {
   return loadSessions()[faction] || null
 }
 
-function clearExpiredSessions() {
-  const sessions = loadSessions()
-  const now = Date.now()
-  let changed = false
-  for (const f of Object.keys(sessions)) {
-    if (sessions[f].expires_at && new Date(sessions[f].expires_at).getTime() < now) {
-      delete sessions[f]
-      changed = true
-    }
-  }
-  if (changed) localStorage.setItem(LS_KEY, JSON.stringify(sessions))
-}
-
 // ── Components ─────────────────────────────────────
 function CopyButton({ text, label, copiedLabel }) {
   const [copied, setCopied] = useState(false)
@@ -72,13 +59,6 @@ function CopyButton({ text, label, copiedLabel }) {
   )
 }
 
-function formatCountdown(sec) {
-  if (sec == null) return '...'
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m} 分 ${s} 秒`
-}
-
 // ── Main modal ─────────────────────────────────────
 export default function JoinModal({ faction, gameId, onClose, initialPhase, preResult }) {
   const [phase, setPhase] = useState(initialPhase || 'confirm')
@@ -86,7 +66,6 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
   const [instruction, setInstruction] = useState(null)
   const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState(true)
-  const [countdown, setCountdown] = useState(null)
 
   const monarch = FACTION_MONARCHS[faction]
   // result.token matches localStorage saveSession; result.session_token matches fresh join API response
@@ -137,15 +116,6 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
           game_id: res.game_id || gameId,
           expires_at: res.expires_at,
         })
-        // Start token countdown (30 min)
-        let remaining = 1800
-        setCountdown(remaining)
-        const iv = setInterval(() => {
-          remaining--
-          if (remaining <= 0) { clearInterval(iv); setCountdown(0) }
-          else setCountdown(remaining)
-        }, 1000)
-
         // Fetch instruction
         try {
           const instUrl = `/v1/lobby/instruction?token=${encodeURIComponent(res.session_token)}`
@@ -174,7 +144,7 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
   }, [phase === 'loading'])
 
   // Clear expired sessions on mount
-  useEffect(() => { clearExpiredSessions() }, [])
+  // Expired sessions are caught by API 401/410 — no client-side cleanup needed
 
   const onOverlayClick = (e) => { if (e.target === e.currentTarget) onClose() }
 
@@ -234,7 +204,7 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
               </h2>
             </div>
             <p className="jm-done-sub">
-              Session Token · 30 分钟有效{countdown != null ? ` · 剩余 ${formatCountdown(countdown)}` : ''}
+              Session Token · 仅本局有效
             </p>
 
             {/* b) Token card */}
@@ -285,4 +255,4 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
 }
 
 // ── Re-exports for external use ────────────────────
-export { loadSessions, saveSession, getSession, clearExpiredSessions }
+export { loadSessions, saveSession, getSession }

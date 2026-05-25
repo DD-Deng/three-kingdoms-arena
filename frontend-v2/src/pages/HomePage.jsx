@@ -203,17 +203,12 @@ export default function HomePage() {
           const ui = slotUI(slot, f, gameStatus)
           const saved = getSession(f)
           const hasSavedSession = saved && saved.game_id === gameId
-          let remainMin = null
-          if (hasSavedSession && saved.expires_at) {
-            remainMin = Math.max(0, Math.floor((new Date(saved.expires_at).getTime() - Date.now()) / 60000))
-          }
           return (
             <div key={f} className={`lb-slot lb-s-${ui.cssClass}`} style={{ borderColor: FACTION_COLORS[f] }}>
               {/* Saved session banner */}
               {hasSavedSession && (
                 <div className="lb-s-banner">
-                  <span>✓ 你已加入 {f} 阵营</span>
-                  {remainMin != null && remainMin > 0 && (<span className="lb-s-banner-expire"> · Token 还有 {remainMin} 分钟有效</span>)}
+                  <span>✓ 你已加入 {f} 阵营 · Token 本局有效</span>
                   <button className="lb-s-banner-btn" onClick={() => {
                     setModalPhase('done')
                     setModalFaction(f)
