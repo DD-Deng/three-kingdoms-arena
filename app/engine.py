@@ -2665,7 +2665,8 @@ def pvp_maybe_advance(session: Session, game_id: int):
 
         if game.status == "paused":
             if ai_managed_count > 0:
-                # All-AI game — resume to active so managed agents can advance
+                # All-AI game — resume to active, then fall through to
+                # submission check so managed agents' actions advance the tick
                 game.status = "active"
                 game.tick_started_at = now_iso
                 session.add(game)
@@ -2682,34 +2683,34 @@ def pvp_maybe_advance(session: Session, game_id: int):
                         auto_decide_managed(session, game_id, ma)
                     except Exception:
                         pass
-                return
-
-            # Check auto-recovery timeout — truly abandoned game
-            from .config import PAUSED_TIMEOUT_SEC
-            heartbeat_times = [s.last_heartbeat_at for s in slots if s.last_heartbeat_at]
-            if heartbeat_times:
-                last_activity = max(heartbeat_times)
+                # Fall through to submission check below
             else:
-                last_activity = game.tick_started_at or game.started_at
-            if last_activity:
-                try:
-                    last_dt = datetime.fromisoformat(last_activity)
-                    if (now_dt - last_dt).total_seconds() > PAUSED_TIMEOUT_SEC:
-                        game.status = "finished"
-                        game.is_active = False
-                        game.is_current = False
-                        game.finished_at = now_iso
-                        game.winner = None
-                        session.add(game)
-                        session.commit()
-                        print(f"[pvp_tick] Game #{game_id} auto-finalized — paused timeout")
-                        from . import lobby
-                        lobby.finish_game(session, game)
-                        return
-                except Exception:
-                    pass
-            # Still within timeout — stay paused, don't resume
-            return
+                # Check auto-recovery timeout — truly abandoned game
+                from .config import PAUSED_TIMEOUT_SEC
+                heartbeat_times = [s.last_heartbeat_at for s in slots if s.last_heartbeat_at]
+                if heartbeat_times:
+                    last_activity = max(heartbeat_times)
+                else:
+                    last_activity = game.tick_started_at or game.started_at
+                if last_activity:
+                    try:
+                        last_dt = datetime.fromisoformat(last_activity)
+                        if (now_dt - last_dt).total_seconds() > PAUSED_TIMEOUT_SEC:
+                            game.status = "finished"
+                            game.is_active = False
+                            game.is_current = False
+                            game.finished_at = now_iso
+                            game.winner = None
+                            session.add(game)
+                            session.commit()
+                            print(f"[pvp_tick] Game #{game_id} auto-finalized — paused timeout")
+                            from . import lobby
+                            lobby.finish_game(session, game)
+                            return
+                    except Exception:
+                        pass
+                # Still within timeout — stay paused, don't resume
+                return
 
         return  # lobby / countdown / finished — nothing to do
 
