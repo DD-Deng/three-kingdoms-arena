@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { api } from '../api'
 import { FACTION_COLORS, FACTION_MONARCHS } from '../constants'
@@ -142,9 +142,6 @@ export default function JoinModal({ faction, gameId, onClose, initialPhase, preR
 
     return () => { cancelled = true }
   }, [phase === 'loading'])
-
-  // Clear expired sessions on mount
-  // Expired sessions are caught by API 401/410 — no client-side cleanup needed
 
   const onOverlayClick = (e) => { if (e.target === e.currentTarget) onClose() }
 
