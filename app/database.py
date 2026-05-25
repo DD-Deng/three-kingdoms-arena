@@ -1,8 +1,9 @@
+import os
 from collections.abc import Generator
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy import text, inspect
 
-DATABASE_URL = "sqlite:///arena.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/arena.db")
 engine = create_engine(DATABASE_URL, echo=False)
 
 

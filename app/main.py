@@ -28,6 +28,8 @@ from . import lobby
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    os.makedirs("/data/logs/public", exist_ok=True)
+    os.makedirs("/data/logs/private", exist_ok=True)
     init_db()
     if os.environ.get("ADMIN_TOKEN", "admin-dev-token") == "admin-dev-token":
         logging.warning("ADMIN_TOKEN is using default value 'admin-dev-token'. Set a strong random token for production.")

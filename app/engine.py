@@ -96,8 +96,8 @@ TRUST_REJECT_THRESHOLD = 50       # trust < 50 → 其他人自动拒绝你的�
 BETRAYAL_COOLDOWN = 5             # 破盟后 5 tick 内联盟提议自动被拒
 ALLIANCE_AUTO_EXPIRE_TICKS = 15  # 联盟 15 tick 后自动过期
 
-# 日志目录
-LOG_DIR = Path("logs")
+# 日志目录 (persisted on Railway Volume)
+LOG_DIR = Path(os.getenv("LOG_DIR", "/data/logs"))
 PUBLIC_LOG_DIR = LOG_DIR / "public"
 PRIVATE_LOG_DIR = LOG_DIR / "private"
 
