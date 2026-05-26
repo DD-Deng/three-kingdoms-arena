@@ -2654,8 +2654,6 @@ def pvp_maybe_advance(session: Session, game_id: int):
 
     # ── 0 occupied slots → pause or auto-recover ──────────
     if len(occupied_factions) == 0:
-        ai_managed_count = sum(1 for s in slots if s.status == "ai_managed")
-
         if game.status == "active":
             game.status = "paused"
             session.add(game)
@@ -2664,17 +2662,7 @@ def pvp_maybe_advance(session: Session, game_id: int):
             return
 
         if game.status == "paused":
-            # All-AI game — resume to active so managed agents can advance
-            # Do NOT call auto_decide_managed here (recursion risk via get_state)
-            if ai_managed_count > 0:
-                game.status = "active"
-                game.tick_started_at = now_iso
-                session.add(game)
-                session.commit()
-                print(f"[pvp_tick] Game #{game_id} resumed — all-AI advance")
-                return
-
-            # Check auto-recovery timeout — truly abandoned game
+            # Check auto-recovery timeout
             from .config import PAUSED_TIMEOUT_SEC
             heartbeat_times = [s.last_heartbeat_at for s in slots if s.last_heartbeat_at]
             if heartbeat_times:
@@ -2723,9 +2711,8 @@ def pvp_maybe_advance(session: Session, game_id: int):
                 pass
         return
 
-    # ── Check submission: occupied + ai_managed factions ──
-    managed_factions = {s.faction for s in slots if s.status == "ai_managed"}
-    active_agents = [a for a in agents if a.faction in (occupied_factions | managed_factions)]
+    # ── Check submission: only occupied-faction agents matter ──
+    active_agents = [a for a in agents if a.faction in occupied_factions]
     if not active_agents:
         return
 
