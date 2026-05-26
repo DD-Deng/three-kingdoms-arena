@@ -402,7 +402,7 @@ def get_state(session: Session, game_id: int, agent: Agent):
         slots = session.exec(
             select(SlotModel).where(SlotModel.game_id == game_id)
         ).all()
-        occupied_factions = {s.faction for s in slots if s.status in ("occupied", "ai_managed")}
+        occupied_factions = {s.faction for s in slots if s.status == "occupied"}
         for a in agents:
             if a.faction not in occupied_factions:
                 continue
@@ -2650,7 +2650,7 @@ def pvp_maybe_advance(session: Session, game_id: int):
     # Ensure every open faction has a managed agent to drive the game
     _ensure_managed_for_open_slots(session, game_id)
 
-    occupied_factions = {s.faction for s in slots if s.status in ("occupied", "ai_managed")}
+    occupied_factions = {s.faction for s in slots if s.status == "occupied"}
 
     # ── 0 occupied slots → pause or auto-recover ──────────
     if len(occupied_factions) == 0:
