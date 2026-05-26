@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.13.0 (2026-05-26) — Production Hardening (Day 15)
+
+### Player Leave Button (P0-T2)
+- `POST /v1/games/{id}/leave` extended to cover all game states
+  - lobby/countdown: cancel join, slot → open
+  - active/paused + alive: AI takeover (slot → ai_managed)
+  - active/paused + eliminated: exiled (redirect to battle report)
+- Frontend: state-aware leave button in JoinModal + HomePage
+- Dynamic button text, confirmation modal for active games
+- Slot `exiled` state already existed in model — frontend now renders it
+
+### Data Persistence (P0-PERSIST)
+- Railway Volume mounted at `/data` for SQLite database + logs
+- DB path: `/data/arena.db`, logs: `/data/logs/`
+- Verified persistence across container rebuilds
+- Admin `POST /api/admin/force-restart` endpoint
+
+### Token Game-Bound Lifecycle (P0-T)
+- Removed 2-hour hard token expiry (`SESSION_MAX_AGE_SEC`)
+- Token invalidates when: game finished, player releases, disconnect > 5 min
+- Grace period: 300s (was 600s)
+- `expires_at` and `your_token_expires_in_sec` now return `null`
+- Frontend: "Session Token · 仅本局有效"
+
+### Lifecycle Bug Fixes
+- P0-1: Complete slot field cleanup (9 fields) across 5 lifecycle paths
+- P0-1.6: Lobby cleanup deactivates ghost BYOA agents on disconnect
+- P0-2 (partial fix): `pvp_maybe_advance` recursion crash fixed — paused games with
+  AI-managed slots auto-resume to active without infinite recursion
+- P0-4: `_resolve_max_ticks` edge case crash protection
+- `_release_player_slot` dead code fix (session now correctly marked kicked)
+- Battle history page filters 0-tick test artifacts
+
+### Known Issues
+- **P0-2 incomplete**: All-AI games bounce paused↔active but tick does not advance.
+  Marginal impact — real player games advance normally. Full fix requires restructuring
+  `pvp_maybe_advance` to check submissions before pause logic (Day 16+).
+
 ## 0.12.0 (2026-05-25) — Token Lifecycle Bound to Game (P0-T)
 
 Token 生命周期绑定对局，移除 2 小时硬过期。
