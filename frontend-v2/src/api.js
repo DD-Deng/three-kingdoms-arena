@@ -30,6 +30,17 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   const data = ct.includes('application/json') ? await res.json() : await res.text()
 
   if (!res.ok) {
+    // On 401/410, auto-clear stale session so UI doesn't show phantom "已加入" banner
+    if ((res.status === 401 || res.status === 410) && res.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const sessions = JSON.parse(localStorage.getItem('arena_sessions') || '{}')
+        if (Object.keys(sessions).length > 0) {
+          localStorage.removeItem('arena_sessions')
+          window.location.reload()
+          return null
+        }
+      } catch {}
+    }
     const detail = typeof data === 'string' ? data : data?.detail
     const errorCode = typeof data === 'object' ? data?.error_code : undefined
     throw new ApiError(detail || errorCode || `HTTP ${res.status}`, {

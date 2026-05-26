@@ -167,7 +167,15 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
     setLeaving(true)
     fetch(`/v1/games/${gameId}/leave?token=${encodeURIComponent(tokenValue)}`, { method: 'POST' })
       .then(async r => {
-        if (!r.ok) { const t = await r.text(); try { const j = JSON.parse(t); setError(j.detail || `HTTP ${r.status}`) } catch { setError(`HTTP ${r.status}`) }; return null }
+        if (!r.ok) {
+          if (r.status === 401 || r.status === 410) {
+            localStorage.removeItem('arena_sessions')
+            alert('Token 已失效，页面将刷新')
+            window.location.reload()
+            return null
+          }
+          const t = await r.text(); try { const j = JSON.parse(t); setError(j.detail || `HTTP ${r.status}`) } catch { setError(`HTTP ${r.status}`) }; return null
+        }
         return r.json()
       })
       .then(data => {

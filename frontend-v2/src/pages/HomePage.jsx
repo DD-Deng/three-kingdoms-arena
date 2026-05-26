@@ -216,7 +216,14 @@ export default function HomePage() {
                         const token = saved?.token || saved?.session_token
                         if (!token) return
                         fetch(`/v1/games/${gameId}/leave?token=${encodeURIComponent(token)}`, { method: 'POST' })
-                          .then(r => r.json().then(d => ({ ok: r.ok, ...d })))
+                          .then(r => {
+                            if (r.status === 401 || r.status === 410) {
+                              localStorage.removeItem('arena_sessions')
+                              alert('Token 已失效，页面将刷新')
+                              window.location.reload()
+                            }
+                            return r.json().then(d => ({ ok: r.ok, ...d }))
+                          })
                           .then(data => {
                             if (!data.ok) { alert(data.detail || '退出失败'); return }
                             try {
