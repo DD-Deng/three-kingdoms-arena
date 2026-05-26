@@ -6,7 +6,19 @@ Step 1 Sanity Check: ✅ 生产稳定。game_id=94 paused, 5min 不变, BattleHi
 
 ## 🔴 CRITICAL
 
-无。当前生产稳定，无 5xx / 白屏 / 数据丢失。
+### C1. BYOA Agent 可无限占据 Slot, 阻止真人玩家加入
+
+**影响**: Join API 是匿名的（`/v1/lobby/join` 不需要 token）。BYOA agent VM 一启动 → 自动 join → 拿到新 token → 占据 slot。只要 VM 不关，slot 永远不让。3 个野生 agent 可承包平台所有 slot，真人玩家完全无法加入。
+
+**根因**: BYOA 模式的设计 gap（非代码 bug）。无 slot ownership / 真人优先级 / join rate limit。
+
+**当前 workaround**: 关 VM。个人测试阶段可接受。
+
+**公开 beta 之前**: 🔴 CRITICAL blocking。需要产品设计讨论（A: slot ownership cooldown, B: 真人优先级踢出, C: agent 注册制, D: 多 lobby, E: slot reservation 等）。
+
+**工作量**: 1 天产品设计 + 1-2 天实施。**不今晚修**——需要专门讨论方案。
+
+**位置**: `app/lobby_routes.py:86` (join 端点无鉴权), `app/lobby.py:650` (join_slot 无 ownership 检查)
 
 ---
 
