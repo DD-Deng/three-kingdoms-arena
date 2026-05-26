@@ -275,22 +275,12 @@ def get_lobby_status(session: Session) -> dict:
                 s.session_token = None
                 session.add(s)
             elif s.status == "ai_managed":
-                # Only reset stale ai_managed (no active managed agent)
-                active_agent = session.exec(
-                    select(Agent).where(
-                        Agent.game_id == game.id,
-                        Agent.faction == s.faction,
-                        Agent.agent_mode == "managed",
-                        Agent.is_active == True,
-                    )
-                ).first()
-                if active_agent is None:
-                    s.status = "open"
-                    s.ready = False
-                    s.ready_at = None
-                    s.joined_at = None
-                    s.session_token = None
-                    session.add(s)
+                s.status = "open"
+                s.ready = False
+                s.ready_at = None
+                s.joined_at = None
+                s.session_token = None
+                session.add(s)
         session.commit()
 
     # Build slot statuses
