@@ -6,23 +6,13 @@ Step 1 Sanity Check: ✅ 生产稳定。game_id=94 paused, 5min 不变, BattleHi
 
 ## 🟠 HIGH
 
-### C1. BYOA Agent 可无限占据 Slot, 阻止真人玩家加入
+### C1. BYOA Agent 可无限占据 Slot, 阻止真人玩家加入 ✅ FIXED (3eb6a79)
 
-**影响**: Join API (`/v1/lobby/join`) 不区分调用者是浏览器(真人点击)还是 agent 程序(VM 自动)。Agent VM 绕过浏览器直接调 join API → 拿新 token → 占据 slot。只要 VM 不关，slot 永远不让。3 个野生 agent 可承包平台所有 slot。
+**影响**: Join API (`/v1/lobby/join`) 不区分调用者是浏览器(真人点击)还是 agent 程序(VM 自动)。Agent VM 绕过浏览器直接调 join API → 拿新 token → 占据 slot。
 
-**根因（更正）**: Join API 缺少 caller 验证。产品设计意图是"玩家用浏览器 JOIN → 复制指令给 agent"，但代码未区分 caller。Agent 程序可直接调 join，绕过了浏览器这层 human gate。
+**修复**: CSRF double-submit cookie。`GET /v1/csrf` 设 cookie + 返回 token，`/v1/lobby/join` 校验 `cookie.csrf_token == header.X-CSRF-Token`。Agent VM 无浏览器 → 无 cookie → 403。
 
-**修复方向（技术性，非产品级）**:
-- A: CSRF token / double-submit cookie（浏览器自动带，agent 不会）
-- B: Referer header 检查（要求 referer 为首页）
-- C: Browser session cookie
-- D: Cloudflare Turnstile / hCaptcha（lightweight anti-bot）
-
-**工作量**: 30 min - 2h。Day 16 可修。
-
-**公开 beta blocker**: 🟠 HIGH（修复简单，不阻塞 demo，但公开前必修）
-
-**位置**: `app/lobby_routes.py:86` (join 端点), `app/lobby.py:650` (join_slot)
+**位置**: `app/lobby_routes.py:70-110`, `frontend-v2/src/api.js`, `frontend-v2/src/App.jsx`
 
 ---
 

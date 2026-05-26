@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.2 (2026-05-26) — CSRF Protection (Audit C1)
+
+- `GET /v1/csrf` endpoint — sets browser cookie + returns token
+- `/v1/lobby/join` requires `X-CSRF-Token` header matching cookie
+- Agent VMs without browser cookie → 403 on direct join
+- Frontend: auto-fetches CSRF token on mount, includes in join calls
+
 ## 0.13.0 (2026-05-26) — Production Hardening (Day 15)
 
 ### Player Leave Button (P0-T2)
