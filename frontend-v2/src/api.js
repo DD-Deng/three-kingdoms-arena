@@ -1,5 +1,22 @@
 const BASE = ''
 
+// CSRF token — fetched from /v1/csrf on app startup, included in join calls
+let csrfToken = null
+
+export async function fetchCsrfToken() {
+  try {
+    const res = await fetch(`${BASE}/v1/csrf`)
+    if (res.ok) {
+      const data = await res.json()
+      csrfToken = data.csrf_token
+    }
+  } catch {}
+}
+
+function csrfHeaders() {
+  return csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
+}
+
 class ApiError extends Error {
   constructor(message, { code, status, body } = {}) {
     super(message)
@@ -10,10 +27,10 @@ class ApiError extends Error {
   }
 }
 
-async function request(path, { method = 'GET', body, signal } = {}) {
-  const opts = { method, signal }
+async function request(path, { method = 'GET', body, signal, headers = {}, credentials } = {}) {
+  const opts = { method, signal, headers: { ...headers }, credentials }
   if (body != null) {
-    opts.headers = { 'Content-Type': 'application/json' }
+    opts.headers['Content-Type'] = 'application/json'
     opts.body = JSON.stringify(body)
   }
 
@@ -55,7 +72,16 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 
 export const api = {
   getLobbyStatus()       { return request('/v1/lobby/status') },
-  joinLobby(faction)     { return request('/v1/lobby/join',     { method: 'POST', body: { faction } }) },
+  joinLobby(faction) {
+    const opts = { method: 'POST', body: { faction } }
+    // CSRF: cookie is sent automatically via credentials, header via csrfHeaders
+    const csrf = csrfHeaders()
+    return request('/v1/lobby/join', {
+      ...opts,
+      headers: { ...csrf },
+      credentials: 'include',
+    })
+  },
   assignAI(faction)      { return request('/v1/lobby/assign-ai', { method: 'POST', body: { faction } }) },
   releaseAI(faction)     { return request('/v1/lobby/release-ai', { method: 'POST', body: { faction } }) },
   ready(token)           { return request('/v1/lobby/ready',    { method: 'POST', body: { token } }) },

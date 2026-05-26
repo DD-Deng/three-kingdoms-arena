@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate, Link } from 'react-router-dom'
+import { fetchCsrfToken } from './api'
 import MainLayout from './layouts/MainLayout'
 import HomePage from './pages/HomePage'
 import SpectatePage from './pages/SpectatePage'
@@ -22,6 +24,7 @@ function Placeholder({ title, desc }) {
 }
 
 export default function App() {
+  useEffect(() => { fetchCsrfToken() }, [])
   return (
     <Routes>
       <Route element={<MainLayout />}>

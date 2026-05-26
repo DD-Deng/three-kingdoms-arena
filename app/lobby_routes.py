@@ -1,5 +1,6 @@
 """V1 Lobby API routes — BYOA (Bring Your Own Agent) endpoints."""
 
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from sqlmodel import Session, select
@@ -67,6 +68,45 @@ def _get_ip(request: Request) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
+# CSRF protection — prevents agent VM from directly calling join
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.get("/csrf")
+def get_csrf_token():
+    """Set a CSRF cookie and return the token for JS to read.
+
+    Browser loads this on first visit. The cookie is automatically
+    sent on subsequent requests. Agent VMs won't have this cookie,
+    so they can't pass the CSRF check on /v1/lobby/join.
+    """
+    token = secrets.token_hex(16)
+    resp = JSONResponse(content={"csrf_token": token})
+    resp.set_cookie(
+        key="csrf_token",
+        value=token,
+        samesite="lax",
+        path="/",
+        httponly=False,  # JS must be able to read it for X-CSRF-Token header
+        max_age=86400,   # 24 hours
+    )
+    return resp
+
+
+def _check_csrf(request: Request) -> bool:
+    """Validate CSRF token for protected endpoints.
+
+    Cookie value must match X-CSRF-Token header. Agent VMs
+    won't have the cookie (they call the API directly, not via browser).
+    """
+    cookie_token = request.cookies.get("csrf_token", "")
+    header_token = request.headers.get("X-CSRF-Token", "")
+    if not cookie_token or not header_token or cookie_token != header_token:
+        raise HTTPException(status_code=403, detail="csrf_token_missing_or_mismatch")
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════
 # Lobby endpoints
 # ═══════════════════════════════════════════════════════════════
 
@@ -85,7 +125,8 @@ def lobby_status(session: Session = Depends(get_session)):
 
 @router.post("/lobby/join")
 def lobby_join(body: dict, request: Request, session: Session = Depends(get_session)):
-    """Join a faction slot. Returns session token."""
+    """Join a faction slot. Returns session token. Requires CSRF token."""
+    _check_csrf(request)
     faction = body.get("faction")
     if not faction:
         raise HTTPException(status_code=400, detail="faction 不能为空")
