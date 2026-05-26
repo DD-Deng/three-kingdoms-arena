@@ -4,25 +4,27 @@ Step 1 Sanity Check: ✅ 生产稳定。game_id=94 paused, 5min 不变, BattleHi
 
 ---
 
-## 🔴 CRITICAL
+## 🟠 HIGH
 
 ### C1. BYOA Agent 可无限占据 Slot, 阻止真人玩家加入
 
-**影响**: Join API 是匿名的（`/v1/lobby/join` 不需要 token）。BYOA agent VM 一启动 → 自动 join → 拿到新 token → 占据 slot。只要 VM 不关，slot 永远不让。3 个野生 agent 可承包平台所有 slot，真人玩家完全无法加入。
+**影响**: Join API (`/v1/lobby/join`) 不区分调用者是浏览器(真人点击)还是 agent 程序(VM 自动)。Agent VM 绕过浏览器直接调 join API → 拿新 token → 占据 slot。只要 VM 不关，slot 永远不让。3 个野生 agent 可承包平台所有 slot。
 
-**根因**: BYOA 模式的设计 gap（非代码 bug）。无 slot ownership / 真人优先级 / join rate limit。
+**根因（更正）**: Join API 缺少 caller 验证。产品设计意图是"玩家用浏览器 JOIN → 复制指令给 agent"，但代码未区分 caller。Agent 程序可直接调 join，绕过了浏览器这层 human gate。
 
-**当前 workaround**: 关 VM。个人测试阶段可接受。
+**修复方向（技术性，非产品级）**:
+- A: CSRF token / double-submit cookie（浏览器自动带，agent 不会）
+- B: Referer header 检查（要求 referer 为首页）
+- C: Browser session cookie
+- D: Cloudflare Turnstile / hCaptcha（lightweight anti-bot）
 
-**公开 beta 之前**: 🔴 CRITICAL blocking。需要产品设计讨论（A: slot ownership cooldown, B: 真人优先级踢出, C: agent 注册制, D: 多 lobby, E: slot reservation 等）。
+**工作量**: 30 min - 2h。Day 16 可修。
 
-**工作量**: 1 天产品设计 + 1-2 天实施。**不今晚修**——需要专门讨论方案。
+**公开 beta blocker**: 🟠 HIGH（修复简单，不阻塞 demo，但公开前必修）
 
-**位置**: `app/lobby_routes.py:86` (join 端点无鉴权), `app/lobby.py:650` (join_slot 无 ownership 检查)
+**位置**: `app/lobby_routes.py:86` (join 端点), `app/lobby.py:650` (join_slot)
 
 ---
-
-## 🟠 HIGH
 
 ### H1. 路由前缀不一致 —— 集成陷阱
 
