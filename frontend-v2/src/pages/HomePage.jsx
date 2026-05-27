@@ -201,7 +201,8 @@ export default function HomePage() {
       {(gameStatus === 'lobby' || gameStatus === 'countdown') && (
         (() => {
           const slotList = FACTIONS.map(f => slots?.[f]).filter(Boolean)
-          const readyCount = slotList.filter(s => s.ready).length
+          const activeSlots = slotList.filter(s => s.status === 'occupied' || s.status === 'ai_managed')
+          const readyCount = activeSlots.filter(s => s.ready).length
           return (
             <div className="home-ready-banner" style={{
               textAlign: 'center', padding: '10px 16px', marginBottom: 12,
