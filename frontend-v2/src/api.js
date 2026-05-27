@@ -82,7 +82,13 @@ export const api = {
       credentials: 'include',
     })
   },
-  assignAI(faction)      { return request('/v1/lobby/assign-ai', { method: 'POST', body: { faction } }) },
+  assignAI(faction) {
+    const csrf = csrfHeaders()
+    return request('/v1/lobby/assign-ai', {
+      method: 'POST', body: { faction },
+      headers: { ...csrf }, credentials: 'include',
+    })
+  },
   releaseAI(faction)     { return request('/v1/lobby/release-ai', { method: 'POST', body: { faction } }) },
   ready(token)           { return request('/v1/lobby/ready',    { method: 'POST', body: { token } }) },
   getCurrentGame()       { return request('/current-game') },

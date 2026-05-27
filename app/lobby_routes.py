@@ -248,7 +248,8 @@ def lobby_unready(body: dict, session: Session = Depends(get_session)):
 
 @router.post("/lobby/assign-ai")
 def lobby_assign_ai(body: dict, request: Request, session: Session = Depends(get_session)):
-    """Assign a managed AI to fill an open slot."""
+    """Assign a managed AI to fill an open slot. Requires CSRF token."""
+    _check_csrf(request)
     faction = body.get("faction")
     if not faction or faction not in ("蜀", "魏", "吴"):
         raise HTTPException(status_code=400, detail="faction must be 蜀/魏/吴")
