@@ -951,6 +951,22 @@ def validate_session(session: Session, token: str) -> SessionModel:
     if sess.status == "kicked":
         raise ValueError("会话已被踢出")
 
+    # Verify the corresponding Agent is still active.
+    # Agent may have been deactivated externally (lobby cleanup,
+    # release, leave) while Session was left orphaned.
+    active_agent = session.exec(
+        select(Agent).where(
+            Agent.game_id == sess.game_id,
+            Agent.faction == sess.faction,
+            Agent.is_active == True,
+        )
+    ).first()
+    if not active_agent:
+        sess.status = "kicked"
+        session.add(sess)
+        session.commit()
+        raise ValueError("会话已被踢出（agent 已失效）")
+
     # Token lifecycle is bound to game lifecycle — no independent expiry.
     # Token invalidates when: game finishes, player releases, or disconnect > grace period.
     return sess
