@@ -39,8 +39,8 @@ export default function BattlesPage() {
       ) : (
         <div className="bt-list">
           {battles.map(b => (
-            <Link to={`/battles/${b.battle_id}`} key={b.battle_id} className="bt-row">
-              <span className="bt-id">#{b.battle_id}</span>
+            <Link to={`/battles/${b.game_id}`} key={b.battle_id} className="bt-row">
+              <span className="bt-id">#{b.game_id}</span>
               <span className="bt-mid">
                 <span className="bt-line1">
                   <span className="bt-model">{b.model}</span>
