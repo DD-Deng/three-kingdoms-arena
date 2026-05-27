@@ -267,6 +267,12 @@ def get_lobby_status(session: Session) -> dict:
     if game.status == "lobby":
         for s in slots:
             if s.status == "disconnected":
+                # Respect grace period — don't kill agent immediately
+                if s.last_heartbeat_at:
+                    last_hb = datetime.fromisoformat(s.last_heartbeat_at)
+                    elapsed = (datetime.now(timezone.utc) - last_hb).total_seconds()
+                    if elapsed < RECONNECT_GRACE_SEC:
+                        continue  # Still within grace, let player reconnect
                 _release_managed_agent(session, game, s.faction)
                 s.status = "open"
                 s.ready = False
