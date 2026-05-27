@@ -80,10 +80,9 @@ COUNTDOWN_SEC: int = int(os.environ.get("COUNTDOWN_SEC", "5"))
 # auto-finalize and create a new game.
 PAUSED_TIMEOUT_SEC: int = int(os.environ.get("PAUSED_TIMEOUT_SEC", "300"))
 
-# Lobby timeout: if game stays in lobby for this long with >= MIN_PLAYERS_TO_START
-# occupied slots, fill remaining slots with managed AI and start countdown.
-LOBBY_TIMEOUT_SEC: int = int(os.environ.get("LOBBY_TIMEOUT_SEC", "120"))
-MIN_PLAYERS_TO_START: int = int(os.environ.get("MIN_PLAYERS_TO_START", "1"))
+# Lobby idle timeout: if lobby sits with no ready slots for this long,
+# auto-finalize and create a fresh lobby. (30 min = 1800s)
+LOBBY_IDLE_TIMEOUT_SEC: int = int(os.environ.get("LOBBY_IDLE_TIMEOUT_SEC", "1800"))
 
 # ── Idle penalty (蹲家惩罚) ─────────────────────────────────────
 # Factions that don't attack for N consecutive ticks incur extra grain upkeep

@@ -60,7 +60,7 @@ function CopyButton({ text, label, copiedLabel }) {
 }
 
 // ── Main modal ─────────────────────────────────────
-export default function JoinModal({ faction, gameId, gameStatus, factionCityCount, onClose, initialPhase, preResult, onLeave }) {
+export default function JoinModal({ faction, gameId, gameStatus, factionCityCount, onClose, initialPhase, preResult, onLeave, slotReady }) {
   const [phase, setPhase] = useState(initialPhase || 'confirm')
   const [result, setResult] = useState(preResult || null)
   const [instruction, setInstruction] = useState(null)
@@ -251,6 +251,17 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
             </div>
             <p className="jm-done-sub">
               Session Token · 仅本局有效
+            </p>
+
+            {/* Ready status */}
+            <p className="jm-done-sub" style={{
+              color: slotReady ? 'var(--accent)' : 'var(--accent)',
+              fontWeight: 500,
+            }}>
+              {slotReady
+                ? '✅ 你的 agent 已 Ready'
+                : '⏳ 你的 agent 未 Ready — 等 agent 调用 ready API'
+              }
             </p>
 
             {/* b) Token card */}

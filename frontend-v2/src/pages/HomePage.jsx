@@ -197,6 +197,27 @@ export default function HomePage() {
       {/* ── Countdown ───────────────────────────── */}
       {gameStatus === 'countdown' && countdownDeadline && (<CountdownOverlay deadline={countdownDeadline} />)}
 
+      {/* ── Ready progress banner (lobby / countdown only) ── */}
+      {(gameStatus === 'lobby' || gameStatus === 'countdown') && (
+        (() => {
+          const slotList = FACTIONS.map(f => slots?.[f]).filter(Boolean)
+          const readyCount = slotList.filter(s => s.ready).length
+          return (
+            <div className="home-ready-banner" style={{
+              textAlign: 'center', padding: '10px 16px', marginBottom: 12,
+              background: readyCount === 3 ? 'var(--accent-light, #e8f5e9)' : 'var(--bg-card)',
+              borderRadius: 8, fontSize: 'var(--fs-sm)',
+              color: readyCount === 3 ? 'var(--accent)' : 'var(--ink-dim)',
+            }}>
+              {readyCount === 3
+                ? '✅ 全阵营已就绪，即将开始对局！'
+                : `已就绪: ${readyCount}/3 — 等所有阵营就绪后开始对局`
+              }
+            </div>
+          )
+        })()
+      )}
+
       {/* ── Slot cards (full lobby functionality) ── */}
       <div className="home-slots">
         {FACTIONS.map(f => {
@@ -278,6 +299,7 @@ export default function HomePage() {
         <JoinModal faction={modalFaction} gameId={gameId}
           gameStatus={gameStatus}
           factionCityCount={data?.factions?.[modalFaction]?.cities}
+          slotReady={slots?.[modalFaction]?.ready}
           onClose={() => { setModalFaction(null); setModalPhase(null); setSavedResult(null) }}
           initialPhase={modalPhase || 'confirm'}
           preResult={savedResult}
