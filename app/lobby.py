@@ -536,6 +536,19 @@ def _release_managed_agent(session: Session, game: Game, faction: str):
         a.deactivated_reason = "ai_released"
         session.add(a)
 
+    # Sync: kick orphaned sessions for this faction so instruction endpoint
+    # doesn't misleadingly return 200 for a deactivated agent's token.
+    orphan_sessions = session.exec(
+        select(SessionModel).where(
+            SessionModel.game_id == game.id,
+            SessionModel.faction == faction,
+            SessionModel.status == "active",
+        )
+    ).all()
+    for s in orphan_sessions:
+        s.status = "kicked"
+        session.add(s)
+
 
 def _release_player_slot(session: Session, game: Game, slot: Slot, faction: str):
     """Release a player-occupied slot."""
