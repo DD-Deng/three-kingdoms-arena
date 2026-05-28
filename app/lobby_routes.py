@@ -259,6 +259,16 @@ def lobby_assign_ai(body: dict, request: Request, session: Session = Depends(get
         return lobby.assign_ai_slot(session, faction, ip)
     except ValueError as e:
         detail = str(e)
+        if detail.startswith("recruit_window_active|"):
+            parts = detail.split("|", 2)
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": parts[2],
+                    "error_code": "recruit_window_active",
+                    "remaining_sec": int(parts[1]),
+                },
+            )
         if "已开始" in detail:
             raise HTTPException(status_code=409, detail=detail)
         if "已被占用" in detail:

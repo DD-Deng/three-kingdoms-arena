@@ -144,7 +144,7 @@ export default function HomePage() {
     pendingRef.current = { faction, check: s => s.status === 'ai_managed', until: Date.now() + 5000 }
     setLocalSlots(prev => ({ ...(prev || slots), [faction]: { status: 'ai_managed', ready: true, agent_display_name: `托管AI-${faction}` } }))
     try { await api.assignAI(faction); flash(`已配 ${faction} 为 AI 托管`) }
-    catch (e) { _revertSlot(faction); pendingRef.current = null; flash(`配 AI 失败: ${e.message}`) }
+    catch (e) { _revertSlot(faction); pendingRef.current = null; flash(e.code === 'recruit_window_active' ? `招募期内，还有 ${e.body?.remaining_sec ?? '?'} 秒可配 AI` : `配 AI 失败: ${e.message}`) }
   }
   async function actReleaseAI(faction) {
     flash(null)

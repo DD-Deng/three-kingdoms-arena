@@ -5,6 +5,7 @@ Lobby timeout: 2 min with >=1 player → AI fills empty slots → countdown.
 """
 
 import json
+import math
 import secrets
 from datetime import datetime, timezone, timedelta
 from sqlmodel import Session, select
@@ -16,6 +17,7 @@ from . import engine as eng
 FACTION_POOL = ["蜀", "魏", "吴"]
 SLOT_HEARTBEAT_TIMEOUT_SEC = 30       # 30s no heartbeat → disconnected
 RECONNECT_GRACE_SEC = 300             # 5 min grace period for reconnection
+RECRUIT_WINDOW_SEC = 90               # 90s window for human players to join before AI fills slots
 MAX_ACTIVE_SESSIONS_PER_IP = 1        # one IP → one active session
 
 
@@ -456,6 +458,33 @@ def assign_ai_slot(session: Session, faction: str, ip: str) -> dict:
         raise ValueError(f"势力 [{faction}] 已被玩家占用")
     if slot.status == "ai_managed":
         return {"status": "already_assigned", "game_id": game.id, "faction": faction}
+
+    # ── Recruit window: block AI when 2+ humans are present ───
+    all_slots = session.exec(
+        select(Slot).where(Slot.game_id == game.id)
+    ).all()
+    now_dt = datetime.now(timezone.utc)
+    real_players: list[Slot] = []
+    for s in all_slots:
+        if s.status == "occupied":
+            real_players.append(s)
+        elif s.status == "disconnected" and s.last_heartbeat_at:
+            last = datetime.fromisoformat(s.last_heartbeat_at)
+            if (now_dt - last).total_seconds() < RECONNECT_GRACE_SEC:
+                real_players.append(s)
+
+    if len(real_players) >= 2:
+        joined = [s.joined_at for s in real_players if s.joined_at]
+        if len(joined) >= 2:
+            joined.sort()
+            window_start = datetime.fromisoformat(joined[1])
+            remaining = RECRUIT_WINDOW_SEC - (now_dt - window_start).total_seconds()
+            if remaining > 0:
+                remaining_ceil = math.ceil(remaining)
+                raise ValueError(
+                    f"recruit_window_active|{remaining_ceil}|"
+                    f"招募期内，{remaining_ceil} 秒后可配 AI（留给可能加入的玩家）"
+                )
 
     # Mark slot as AI-managed
     slot.status = "ai_managed"
