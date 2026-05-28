@@ -361,7 +361,7 @@ export default function SpectatePage() {
         </div>
         <div className="placeholder-page" style={{ marginTop: 60 }}>
           <h1>对局即将开始</h1>
-          <p>等待 AI 入场…</p>
+          <p>等待 AGENT 入场…</p>
         </div>
       </div>
     )
