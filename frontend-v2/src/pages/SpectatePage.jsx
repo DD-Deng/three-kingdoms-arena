@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
+import usePolling from '../hooks/usePolling'
 import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, CITY_POSITIONS, ADJACENCY } from '../constants'
 
 function computeFactions(cities) {
@@ -277,20 +278,31 @@ export default function SpectatePage() {
   const [params] = useSearchParams()
   const gameIdFromUrl = params.get('game') ? parseInt(params.get('game'), 10) : null
   const [resolvedGameId, setResolvedGameId] = useState(gameIdFromUrl)
-  const [replayData, setReplayData] = useState(null)
-  const [error, setError] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
 
-  // Resolve gameId: URL param priority, otherwise fetch active game
+  // Live state from status (has troops/defense that replay lacks)
+  const [pollInterval, setPollInterval] = useState(3000)
+  const { data: liveData, error: liveError } = usePolling('/v1/lobby/status', { intervalMs: pollInterval })
+  const liveIsLoading = !liveData && !liveError
+
+  // Event history from replay (complete, no client accumulation)
+  const [replayData, setReplayData] = useState(null)
+  const [eventError, setEventError] = useState(null)
+
+  // Resolve gameId for replay: URL param priority, otherwise from live status
   useEffect(() => {
     if (resolvedGameId != null) return
-    fetch('/v1/lobby/status')
-      .then(r => r.json())
-      .then(d => { if (d.game_id) setResolvedGameId(d.game_id); else { setError('无活跃对局'); setIsLoading(false) } })
-      .catch(() => { setError('无法获取当前对局'); setIsLoading(false) })
-  }, [])
+    if (!liveData?.game_id) return
+    setResolvedGameId(liveData.game_id)
+  }, [liveData?.game_id, resolvedGameId])
 
-  // Poll replay endpoint — single source of truth for events
+  // Adjust status poll interval from live status
+  useEffect(() => {
+    if (!liveData?.status) return
+    const next = liveData.status === 'finished' ? null : liveData.status === 'countdown' ? 1000 : 3000
+    setPollInterval(prev => prev === next ? prev : next)
+  }, [liveData?.status])
+
+  // Poll replay endpoint for event history
   useEffect(() => {
     if (resolvedGameId == null) return
     let cancelled = false
@@ -299,14 +311,13 @@ export default function SpectatePage() {
     async function poll() {
       try {
         const r = await fetch(`/v1/games/${resolvedGameId}/replay`)
-        if (!r.ok) { if (!cancelled) { setError(`HTTP ${r.status}`); setIsLoading(false) }; return }
+        if (!r.ok) { if (!cancelled) setEventError(`HTTP ${r.status}`); return }
         const d = await r.json()
         if (cancelled) return
         setReplayData(d)
-        setIsLoading(false)
         if (d.status === 'finished' && timer) { clearInterval(timer); timer = null }
       } catch (e) {
-        if (!cancelled) { setError(e.message); setIsLoading(false) }
+        if (!cancelled) setEventError(e.message)
       }
     }
 
@@ -315,12 +326,12 @@ export default function SpectatePage() {
     return () => { cancelled = true; if (timer) clearInterval(timer) }
   }, [resolvedGameId])
 
-  // Flatten events from all ticks, injecting tick from parent entry if missing
+  // Flatten events from all ticks with tick injection
   const flatEvents = (replayData?.ticks || []).flatMap(entry =>
     (entry.events || []).map(evt => ({ ...evt, tick: evt.tick ?? entry.tick }))
   )
 
-  // Compute power history from full tick data
+  // Power history from replay ticks (cities per tick for win rate curve)
   const powerHistory = (replayData?.ticks || []).map(entry => {
     const factions = computeFactions(entry.cities || [])
     const power = {}
@@ -328,22 +339,22 @@ export default function SpectatePage() {
     return { tick: entry.tick, ...power }
   })
 
-  if (isLoading && !replayData) return <div className="sp-loading">加载中…</div>
+  if (liveIsLoading && !liveData) return <div className="sp-loading">加载中…</div>
 
-  const lastTick = replayData?.ticks?.[replayData.ticks.length - 1]
-  const tick = lastTick?.tick ?? 0
-  const maxTicks = replayData?.max_ticks ?? 50
-  const status = replayData?.status ?? '?'
-  const cities = lastTick?.cities || []
-  const chapters = replayData?.chapters || []
+  // Live state from status (has troops for map, cards, eval bar)
+  const tick = liveData?.tick ?? 0
+  const maxTicks = liveData?.max_ticks ?? 50
+  const status = liveData?.status ?? '?'
+  const cities = liveData?.cities || []
+  const chapters = liveData?.chapters || []
   const agents = replayData?.agents || []
-  const factionsData = replayData?.factions || {}
+  const factionsData = liveData?.factions || {}
 
   return (
     <div className="sp-page">
-      {error && <div className="sp-error">Failed to fetch: {error}</div>}
+      {(liveError || eventError) && <div className="sp-error">Failed to fetch: {liveError || eventError}</div>}
       <div className="sp-topbar">
-        <h1>Game <span className="sp-mono">{replayData?.game_id ?? '?'}</span>{' · '}Tick <span className="sp-mono">{tick}</span>/{maxTicks}</h1>
+        <h1>Game <span className="sp-mono">{liveData?.game_id ?? '?'}</span>{' · '}Tick <span className="sp-mono">{tick}</span>/{maxTicks}</h1>
         <span className={`sp-status sp-st-${status}`}>{status}</span>
         <Link to="/" className="sp-back">← 返回大厅</Link>
       </div>
