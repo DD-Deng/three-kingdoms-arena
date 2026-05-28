@@ -147,12 +147,25 @@ function FactionCards({ cities, agents, factionsData }) {
 
 function EventFeed({ events }) {
   const [expanded, setExpanded] = useState(null)
-  const [locked, setLocked] = useState(false)
+  const [autoFollow, setAutoFollow] = useState(true)
   const [newIds, setNewIds] = useState(new Set())
   const bodyRef = useRef(null)
   const prevLenRef = useRef(0)
 
-  useEffect(() => { if (!locked && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight }, [events, locked])
+  useEffect(() => { if (autoFollow && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight }, [events, autoFollow])
+
+  function handleScroll() {
+    const el = bodyRef.current
+    if (!el) return
+    setAutoFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
+  }
+
+  function handleLockClick() {
+    if (!autoFollow && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight
+      setAutoFollow(true)
+    }
+  }
 
   useEffect(() => {
     if (!events) return
@@ -170,9 +183,9 @@ function EventFeed({ events }) {
     <div className="sp-feed">
       <div className="sp-feed-header">
         <span>事件流</span>
-        <button className={`sp-feed-lock ${locked ? 'locked' : ''}`} onClick={() => setLocked(!locked)}>{locked ? '已锁定' : '自动滚动'}</button>
+        <button className={`sp-feed-lock ${!autoFollow ? 'locked' : ''}`} onClick={handleLockClick}>{autoFollow ? '自动滚动' : '已暂停'}</button>
       </div>
-      <div className="sp-feed-body" ref={bodyRef}>
+      <div className="sp-feed-body" ref={bodyRef} onScroll={handleScroll}>
         {displayEvents.length === 0 && <div className="sp-feed-empty">暂无事件，等待战局推进…</div>}
         {displayEvents.map((evt, i) => {
           const isExpanded = expanded === i
@@ -214,17 +227,31 @@ function EventFeed({ events }) {
 }
 
 function NarrativePanel({ chapters }) {
-  const [locked, setLocked] = useState(false)
+  const [autoFollow, setAutoFollow] = useState(true)
   const bodyRef = useRef(null)
-  useEffect(() => { if (!locked && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight }, [chapters, locked])
+  useEffect(() => { if (autoFollow && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight }, [chapters, autoFollow])
+
+  function handleScroll() {
+    const el = bodyRef.current
+    if (!el) return
+    setAutoFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
+  }
+
+  function handleLockClick() {
+    if (!autoFollow && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight
+      setAutoFollow(true)
+    }
+  }
+
   const displayChapters = chapters || []
   return (
     <div className="sp-panel sp-narrative">
       <div className="sp-feed-header">
         <span>评书叙事</span>
-        <button className={`sp-feed-lock ${locked ? 'locked' : ''}`} onClick={() => setLocked(!locked)}>{locked ? '已锁定' : '自动滚动'}</button>
+        <button className={`sp-feed-lock ${!autoFollow ? 'locked' : ''}`} onClick={handleLockClick}>{autoFollow ? '自动滚动' : '已暂停'}</button>
       </div>
-      <div className="sp-feed-body" style={{ maxHeight: 360 }} ref={bodyRef}>
+      <div className="sp-feed-body" style={{ maxHeight: 360 }} ref={bodyRef} onScroll={handleScroll}>
         {displayChapters.length === 0 && <div className="sp-narrative-placeholder">评书正在生成…</div>}
         {displayChapters.map((ch, i) => (
           <div key={i} className="sp-narrative-chapter">
