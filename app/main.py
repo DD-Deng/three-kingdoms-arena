@@ -861,14 +861,14 @@ def trigger_commentary_generation(
 
 @app.get("/v1/games/{game_id}/replay")
 def game_replay(game_id: int, session: Session = Depends(get_session)):
-    """Return full per-tick public state array for offline analysis."""
+    """Return full per-tick public state for spectate — single source of truth."""
     import json
 
     game = session.get(Game, game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="对局不存在")
 
-    from .engine import PUBLIC_LOG_DIR
+    from .engine import PUBLIC_LOG_DIR, build_public_factions
     log_path = PUBLIC_LOG_DIR / f"{game_id}.jsonl"
 
     ticks: list[dict] = []
@@ -887,11 +887,23 @@ def game_replay(game_id: int, session: Session = Depends(get_session)):
         except Exception:
             pass
 
+    agents = session.exec(
+        select(Agent).where(Agent.game_id == game_id, Agent.is_active == True)
+    ).all()
+    agent_info = [{"name": a.agent_name, "faction": a.faction, "mode": a.agent_mode} for a in agents]
+
+    cities = session.exec(select(City).where(City.game_id == game_id)).all()
+
     return {
         "game_id": game.id,
         "status": game.status,
+        "winner": game.winner,
+        "max_ticks": game.max_ticks,
         "total_ticks": len(ticks),
+        "chapters": json.loads(game.chapters) if game.chapters else [],
         "ticks": ticks,
+        "agents": agent_info,
+        "factions": build_public_factions(game, cities) if cities else {},
     }
 
 

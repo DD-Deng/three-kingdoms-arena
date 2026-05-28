@@ -1270,6 +1270,7 @@ def tick(session: Session, game_id: int):
 
         # Public event summary
         public_event: dict = {
+            "tick": game.tick,
             "city": city_name,
             "attackers": list(faction_attack.keys()),
             "defender": city.owner or "中立",
@@ -1588,6 +1589,8 @@ def tick(session: Session, game_id: int):
             was = resources[faction].get("_was_disadvantaged", False)
             if is_now and not was:
                 combat_events.append({
+                    "tick": game.tick,
+                    "type": "economy_buff",
                     "kind": "economy_buff",
                     "faction": faction,
                     "text": f"民心思变，征兵成本减半",

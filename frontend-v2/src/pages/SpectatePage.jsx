@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import usePolling from '../hooks/usePolling'
 import { FACTIONS, FACTION_COLORS, FACTION_MONARCHS, CITY_POSITIONS, ADJACENCY } from '../constants'
-import { isGameInProgress } from '../constants'
 
 function computeFactions(cities) {
   const factions = { 蜀: { cities: 0, troops: 0 }, 魏: { cities: 0, troops: 0 }, 吴: { cities: 0, troops: 0 } }
@@ -22,14 +20,19 @@ function computeEvalPower(cities) {
   return power
 }
 
-// SVG arrow pattern inspired by Lichess chessground (re-implemented, not copied)
 function CityMap({ cities, events }) {
   const [flashes, setFlashes] = useState({})
   const [arrows, setArrows] = useState([])
   const prevLenRef = useRef(0)
+  const didInitRef = useRef(false)
 
   useEffect(() => {
-    if (!events) return
+    if (!events || events.length === 0) return
+    if (!didInitRef.current) {
+      prevLenRef.current = events.length
+      didInitRef.current = true
+      return
+    }
     const newEvents = events.slice(prevLenRef.current)
     prevLenRef.current = events.length
     for (const evt of newEvents) {
@@ -97,7 +100,6 @@ function CityMap({ cities, events }) {
   )
 }
 
-// Three-faction eval bar inspired by Lichess (re-implemented, not copied)
 function EvalBar({ cities }) {
   const power = computeEvalPower(cities)
   return (
@@ -112,7 +114,6 @@ function EvalBar({ cities }) {
   )
 }
 
-// Player card pattern inspired by Lichess (re-implemented, not copied)
 function FactionCards({ cities, agents, factionsData }) {
   const factions = computeFactions(cities)
   const agentMap = {}
@@ -134,7 +135,7 @@ function FactionCards({ cities, agents, factionsData }) {
               <div className="sp-fc-stat"><span className="sp-fc-label">粮</span><span className="sp-fc-value">{grain != null ? grain.toLocaleString() : '—'}</span></div>
             </div>
             {agent && (
-              <div className="sp-fc-agent">{agent.name} · {agent.mode === 'managed' ? '托管' : '玩家'}{agent.submitted && <span className="sp-fc-submitted"> ✓已提交</span>}</div>
+              <div className="sp-fc-agent">{agent.name} · {agent.mode === 'managed' ? '托管' : '玩家'}</div>
             )}
           </div>
         )
@@ -143,8 +144,6 @@ function FactionCards({ cities, agents, factionsData }) {
   )
 }
 
-// Event feed with auto-scroll + new event highlight pattern
-// inspired by Lichess move list (re-implemented, not copied)
 function EventFeed({ events }) {
   const [expanded, setExpanded] = useState(null)
   const [locked, setLocked] = useState(false)
@@ -184,10 +183,12 @@ function EventFeed({ events }) {
               <div className="sp-event-summary">
                 <span className="sp-event-tick">T{evt.tick ?? '?'}</span>
                 <span className="sp-event-desc">
-                  {evt.city || '?'}{' · '}
-                  {result === 'captured' && captured ? <span style={{ color: FACTION_COLORS[captured] || 'var(--ink)' }}>{captured}攻占</span>
-                    : result === 'defended' && defended ? <span style={{ color: FACTION_COLORS[defended] || 'var(--ink)' }}>{defended}守住</span>
-                    : result}
+                  {evt.text ? evt.text
+                    : <>{evt.city || '?'}{' · '}
+                      {result === 'captured' && captured ? <span style={{ color: FACTION_COLORS[captured] || 'var(--ink)' }}>{captured}攻占</span>
+                        : result === 'defended' && defended ? <span style={{ color: FACTION_COLORS[defended] || 'var(--ink)' }}>{defended}守住</span>
+                        : result}</>
+                  }
                 </span>
               </div>
               {isExpanded && evt.combat_report && (
@@ -211,7 +212,6 @@ function EventFeed({ events }) {
   )
 }
 
-// Narrative stream pattern inspired by Football Manager (re-implemented, not copied)
 function NarrativePanel({ chapters }) {
   const [locked, setLocked] = useState(false)
   const bodyRef = useRef(null)
@@ -236,7 +236,6 @@ function NarrativePanel({ chapters }) {
   )
 }
 
-// Win probability curve pattern inspired by AlphaGo broadcast & Lichess (re-implemented, not copied)
 function WinRateCurve({ history }) {
   const h = history || []
   if (h.length < 2) return null
@@ -276,56 +275,75 @@ function TickBar({ tick, maxTicks }) {
 // ── Main component ─────────────────────────────────
 export default function SpectatePage() {
   const [params] = useSearchParams()
-  const gameId = params.get('game')
-  const [pollInterval, setPollInterval] = useState(3000)
-  const { data, error, isLoading } = usePolling('/v1/lobby/status', { intervalMs: pollInterval })
-  const { data: cgData } = usePolling('/current-game', { intervalMs: 10000 })
+  const gameIdFromUrl = params.get('game') ? parseInt(params.get('game'), 10) : null
+  const [resolvedGameId, setResolvedGameId] = useState(gameIdFromUrl)
+  const [replayData, setReplayData] = useState(null)
+  const [error, setError] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
+  // Resolve gameId: URL param priority, otherwise fetch active game
   useEffect(() => {
-    if (!data?.status) return
-    const next = data.status === 'finished' ? null : data.status === 'countdown' ? 1000 : 3000
-    setPollInterval(prev => prev === next ? prev : next)
-  }, [data?.status])
+    if (resolvedGameId != null) return
+    fetch('/v1/lobby/status')
+      .then(r => r.json())
+      .then(d => { if (d.game_id) setResolvedGameId(d.game_id); else { setError('无活跃对局'); setIsLoading(false) } })
+      .catch(() => { setError('无法获取当前对局'); setIsLoading(false) })
+  }, [])
 
-  const [accumulatedEvents, setAccumulatedEvents] = useState([])
-  const lastGameIdRef = useRef(null)
-
+  // Poll replay endpoint — single source of truth for events
   useEffect(() => {
-    if (!data?.events) return
-    if (data.game_id !== lastGameIdRef.current) { lastGameIdRef.current = data.game_id; setAccumulatedEvents([]); if (data.events.length === 0) return }
-    const newEvents = data.events
-    setAccumulatedEvents(prev => {
-      const seen = new Set(prev.map(e => `${e.tick}|${e.city}|${e.result}`))
-      const fresh = newEvents.filter(e => !seen.has(`${e.tick}|${e.city}|${e.result}`))
-      return fresh.length ? [...prev, ...fresh] : prev
-    })
-  }, [data?.events, data?.game_id])
+    if (resolvedGameId == null) return
+    let cancelled = false
+    let timer = null
 
-  const [powerHistory, setPowerHistory] = useState([])
-  const lastTickRef = useRef(-1)
-  useEffect(() => {
-    if (!data?.cities) return
-    const tick = data.tick
-    if (tick === lastTickRef.current) return; lastTickRef.current = tick
-    const factions = computeFactions(data.cities)
+    async function poll() {
+      try {
+        const r = await fetch(`/v1/games/${resolvedGameId}/replay`)
+        if (!r.ok) { if (!cancelled) { setError(`HTTP ${r.status}`); setIsLoading(false) }; return }
+        const d = await r.json()
+        if (cancelled) return
+        setReplayData(d)
+        setIsLoading(false)
+        if (d.status === 'finished' && timer) { clearInterval(timer); timer = null }
+      } catch (e) {
+        if (!cancelled) { setError(e.message); setIsLoading(false) }
+      }
+    }
+
+    poll()
+    timer = setInterval(poll, 3000)
+    return () => { cancelled = true; if (timer) clearInterval(timer) }
+  }, [resolvedGameId])
+
+  // Flatten events from all ticks, injecting tick from parent entry if missing
+  const flatEvents = (replayData?.ticks || []).flatMap(entry =>
+    (entry.events || []).map(evt => ({ ...evt, tick: evt.tick ?? entry.tick }))
+  )
+
+  // Compute power history from full tick data
+  const powerHistory = (replayData?.ticks || []).map(entry => {
+    const factions = computeFactions(entry.cities || [])
     const power = {}
     for (const f of FACTIONS) power[f] = (factions[f]?.cities || 0) * 3 + (factions[f]?.troops || 0) * 0.001
-    setPowerHistory(prev => [...prev.slice(-49), { tick, ...power }])
-  }, [data?.tick, data?.cities])
+    return { tick: entry.tick, ...power }
+  })
 
-  if (isLoading && !data) return <div className="sp-loading">加载中…</div>
-  if (error) console.error('SpectatePage fetch error:', error)
+  if (isLoading && !replayData) return <div className="sp-loading">加载中…</div>
 
-  const tick = data?.tick ?? 0; const maxTicks = data?.max_ticks ?? 50
-  const status = data?.status ?? '?'; const cities = data?.cities || []
-  const chapters = data?.chapters || []; const agents = cgData?.agents || []
-  const factionsData = cgData?.factions
+  const lastTick = replayData?.ticks?.[replayData.ticks.length - 1]
+  const tick = lastTick?.tick ?? 0
+  const maxTicks = replayData?.max_ticks ?? 50
+  const status = replayData?.status ?? '?'
+  const cities = lastTick?.cities || []
+  const chapters = replayData?.chapters || []
+  const agents = replayData?.agents || []
+  const factionsData = replayData?.factions || {}
 
   return (
     <div className="sp-page">
       {error && <div className="sp-error">Failed to fetch: {error}</div>}
       <div className="sp-topbar">
-        <h1>Game <span className="sp-mono">{data?.game_id ?? '?'}</span>{' · '}Tick <span className="sp-mono">{tick}</span>/{maxTicks}</h1>
+        <h1>Game <span className="sp-mono">{replayData?.game_id ?? '?'}</span>{' · '}Tick <span className="sp-mono">{tick}</span>/{maxTicks}</h1>
         <span className={`sp-status sp-st-${status}`}>{status}</span>
         <Link to="/" className="sp-back">← 返回大厅</Link>
       </div>
@@ -334,7 +352,7 @@ export default function SpectatePage() {
         <div className="sp-left">
           <div className="sp-panel sp-map-panel">
             <div className="sp-panel-title">战局地图</div>
-            <CityMap cities={cities} events={accumulatedEvents} />
+            <CityMap key={resolvedGameId} cities={cities} events={flatEvents} />
           </div>
           <EvalBar cities={cities} />
           <FactionCards cities={cities} agents={agents} factionsData={factionsData} />
@@ -345,7 +363,7 @@ export default function SpectatePage() {
         </div>
       </div>
 
-      <EventFeed events={accumulatedEvents} />
+      <EventFeed events={flatEvents} />
       <TickBar tick={tick} maxTicks={maxTicks} />
     </div>
   )
