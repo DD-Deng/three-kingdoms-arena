@@ -350,6 +350,23 @@ export default function SpectatePage() {
   const agents = replayData?.agents || []
   const factionsData = liveData?.factions || {}
 
+  const isWaiting = status === 'lobby' && tick === 0
+
+  if (isWaiting) {
+    return (
+      <div className="sp-page">
+        <div className="sp-topbar">
+          <h1>观战</h1>
+          <Link to="/" className="sp-back">← 返回大厅</Link>
+        </div>
+        <div className="placeholder-page" style={{ marginTop: 60 }}>
+          <h1>对局即将开始</h1>
+          <p>等待 AI 入场…</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="sp-page">
       {(liveError || eventError) && <div className="sp-error">Failed to fetch: {liveError || eventError}</div>}
