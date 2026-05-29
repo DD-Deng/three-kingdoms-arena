@@ -193,6 +193,31 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
         select(Slot).where(Slot.game_id == game.id)
     ).all()
     for s in slots:
+        # Record stats to AgentProfile — must read BEFORE clearing
+        pid = s.agent_profile_id
+        if pid:
+            profile = session.exec(
+                select(AgentProfile).where(AgentProfile.public_id == pid)
+            ).first()
+            if profile is not None:
+                profile.total_games += 1
+                won = (game.winner is not None and game.winner == s.faction)
+                if won:
+                    profile.total_wins += 1
+                if s.faction == "蜀":
+                    profile.shu_games += 1
+                    if won:
+                        profile.shu_wins += 1
+                elif s.faction == "魏":
+                    profile.wei_games += 1
+                    if won:
+                        profile.wei_wins += 1
+                elif s.faction == "吴":
+                    profile.wu_games += 1
+                    if won:
+                        profile.wu_wins += 1
+                session.add(profile)
+
         s.status = "open"
         s.session_token = None
         s.ready = False
@@ -202,6 +227,7 @@ def finish_game(session: Session, game: Game, winner: str | None = None):
         s.occupied_by_ip = None
         s.occupied_by_persona_hash = None
         s.agent_display_name = None
+        s.agent_profile_id = None
         session.add(s)
 
     # Create BattleHistory record for the finished game
