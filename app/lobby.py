@@ -742,6 +742,7 @@ def join_slot(
     ua: str | None = None,
     agent_display_name: str | None = None,
     join_new_only: bool = False,
+    api_key: str | None = None,
 ) -> dict:
     """Join a faction slot. Returns session info or raises ValueError."""
     game = get_active_game(session)
@@ -860,6 +861,14 @@ def join_slot(
         if len(active_sessions) >= MAX_ACTIVE_SESSIONS_PER_IP:
             raise ValueError("同一 IP 只能持有 1 个活跃席位")
 
+    # ── Verify optional api_key ────────────────────────────
+    agent_profile_id = None
+    if api_key:
+        profile = verify_api_key(session, api_key)
+        if profile is None:
+            raise ValueError("invalid_api_key")
+        agent_profile_id = profile.public_id
+
     # ── Occupy the slot ────────────────────────────────────
     token = _new_token()
     now = _now()
@@ -873,6 +882,7 @@ def join_slot(
     slot.ready = False
     slot.ready_at = None
     slot.agent_display_name = agent_display_name or f"BYOA-{faction}"
+    slot.agent_profile_id = agent_profile_id
     session.add(slot)
 
     # Create session record

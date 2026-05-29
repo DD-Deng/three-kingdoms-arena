@@ -203,6 +203,7 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
 
     agent_display_name = body.get("agent_display_name")
     join_new_only = body.get("join_new_only", False)
+    api_key = body.get("api_key")
 
     try:
         result = lobby.join_slot(
@@ -213,9 +214,12 @@ def lobby_join(body: dict, request: Request, session: Session = Depends(get_sess
             ua=request.headers.get("User-Agent", ""),
             agent_display_name=agent_display_name,
             join_new_only=join_new_only,
+            api_key=api_key,
         )
     except ValueError as e:
         detail = str(e)
+        if detail == "invalid_api_key":
+            raise HTTPException(status_code=401, detail="Agent ID 无效，请检查或重新注册")
         if "已被占用" in detail or "已被玩家占用" in detail:
             raise HTTPException(status_code=409, detail=detail)
         if "同一 IP" in detail:

@@ -72,8 +72,10 @@ async function request(path, { method = 'GET', body, signal, headers = {}, crede
 
 export const api = {
   getLobbyStatus()       { return request('/v1/lobby/status') },
-  joinLobby(faction) {
-    const opts = { method: 'POST', body: { faction } }
+  joinLobby(faction, apiKey) {
+    const body = { faction }
+    if (apiKey) body.api_key = apiKey
+    const opts = { method: 'POST', body }
     // CSRF: cookie is sent automatically via credentials, header via csrfHeaders
     const csrf = csrfHeaders()
     return request('/v1/lobby/join', {

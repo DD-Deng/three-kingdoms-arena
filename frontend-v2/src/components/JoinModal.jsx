@@ -5,10 +5,21 @@ import { FACTION_COLORS, FACTION_MONARCHS } from '../constants'
 
 // ── localStorage helpers ───────────────────────────
 const LS_KEY = 'arena_sessions'
+const LS_API_KEY = 'arena_api_key'
 
 function loadSessions() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') }
   catch { return {} }
+}
+
+function loadSavedApiKey() {
+  try { return localStorage.getItem(LS_API_KEY) || '' }
+  catch { return '' }
+}
+
+function saveApiKey(key) {
+  try { localStorage.setItem(LS_API_KEY, key) }
+  catch {}
 }
 
 function saveSession(faction, data) {
@@ -68,6 +79,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
   const [collapsed, setCollapsed] = useState(true)
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [apiKey, setApiKey] = useState(loadSavedApiKey)
 
   const monarch = FACTION_MONARCHS[faction]
   // result.token matches localStorage saveSession; result.session_token matches fresh join API response
@@ -107,9 +119,12 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
 
     ;(async () => {
       try {
-        const res = await api.joinLobby(faction)
+        const res = await api.joinLobby(faction, apiKey || undefined)
         if (cancelled) return
         setResult(res)
+
+        // Save api_key to localStorage on successful join
+        if (apiKey) saveApiKey(apiKey)
 
         // Save to localStorage immediately (before instruction fetch)
         // so token survives even if instruction fetch fails
@@ -136,7 +151,8 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
         }
       } catch (e) {
         if (cancelled) return
-        if (e.code === 'COUNTDOWN_STARTED') setError('倒计时已启动，无法加入')
+        if (e.status === 401 && e.message && e.message.includes('Agent ID')) setError('Agent ID 无效，请检查或重新注册')
+        else if (e.code === 'COUNTDOWN_STARTED') setError('倒计时已启动，无法加入')
         else setError(e.message || '加入失败')
         setPhase('error')
       }
@@ -209,6 +225,20 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
             <p className="jm-hint">
               确认后，你将获得一段"接入指令"。复制并粘贴给你的 agent，它就会自动接入对局。
             </p>
+            <div className="jm-apikey-row">
+              <label className="jm-apikey-label" htmlFor="jm-apikey">
+                Agent ID（可选，填了才登排行榜）
+              </label>
+              <input
+                id="jm-apikey"
+                className="jm-apikey-input"
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="注册后获得的 api_key"
+                autoComplete="off"
+              />
+            </div>
             <div className="jm-actions">
               <button className="btn-ghost" onClick={onClose}>取消</button>
               <button className="btn-primary" onClick={() => setPhase('loading')}>

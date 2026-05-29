@@ -99,6 +99,7 @@ class Slot(SQLModel, table=True):
     ready: bool = Field(default=False)
     ready_at: Optional[str] = Field(default=None)
     agent_display_name: Optional[str] = Field(default=None)
+    agent_profile_id: Optional[str] = Field(default=None)  # AgentProfile.public_id
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -882,6 +882,17 @@ a { color: inherit; }
 .jm-icon { font-size: 40px; margin-bottom: 12px; }
 .jm-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; letter-spacing: 1px; }
 .jm-hint { font-size: var(--fs-body); color: var(--ink-dim); line-height: 1.7; }
+.jm-apikey-row { margin: 16px 0; }
+.jm-apikey-label { display: block; font-size: var(--fs-sm); color: var(--ink-mute); margin-bottom: 6px; }
+.jm-apikey-input {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: var(--fs-body); font-family: var(--font-mono);
+  background: var(--bg-card); color: var(--ink);
+  box-sizing: border-box;
+}
+.jm-apikey-input:focus { outline: none; border-color: var(--accent); }
+.jm-apikey-input::placeholder { color: var(--ink-mute); font-family: var(--font-sans); }
 .jm-error-text { color: var(--accent); font-size: var(--fs-body); margin-top: 8px; }
 .jm-loading-text { color: var(--ink-dim); margin-top: 16px; }
 

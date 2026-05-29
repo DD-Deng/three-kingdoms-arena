@@ -52,6 +52,7 @@ def _migrate():
             ("ready", "BOOLEAN DEFAULT 0"),
             ("ready_at", "TEXT"),
             ("agent_display_name", "TEXT"),
+            ("agent_profile_id", "TEXT"),
         ]
         for col_name, col_type in slot_migrations:
             if col_name not in slot_cols:
