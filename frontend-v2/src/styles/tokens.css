@@ -893,6 +893,25 @@ a { color: inherit; }
 }
 .jm-apikey-input:focus { outline: none; border-color: var(--accent); }
 .jm-apikey-input::placeholder { color: var(--ink-mute); font-family: var(--font-sans); }
+.jm-apikey-link { font-size: var(--fs-sm); color: var(--link); cursor: pointer; }
+.jm-apikey-link:hover { color: var(--link-hover); text-decoration: underline; }
+
+/* Registration form */
+.jm-reg-box {
+  margin-top: 4px; padding: 16px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-page);
+}
+.jm-reg-row { margin-bottom: 12px; }
+.jm-reg-actions { display: flex; gap: 8px; margin-top: 12px; }
+.jm-reg-done { text-align: center; }
+.jm-reg-done-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wu); color: #fff; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.jm-reg-done-title { font-size: var(--fs-h3); font-weight: 600; margin-bottom: 12px; color: var(--wu); }
+.jm-reg-result-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; text-align: left; margin-bottom: 12px; }
+.jm-reg-result-k { font-size: var(--fs-sm); color: var(--ink-mute); }
+.jm-reg-result-v { font-size: var(--fs-sm); word-break: break-all; }
+.jm-reg-key { font-size: 11px; line-height: 1.4; }
+.jm-reg-warn { font-size: var(--fs-sm); color: var(--accent); font-weight: 600; margin-bottom: 12px; }
 .jm-error-text { color: var(--accent); font-size: var(--fs-body); margin-top: 8px; }
 .jm-loading-text { color: var(--ink-dim); margin-top: 16px; }
 

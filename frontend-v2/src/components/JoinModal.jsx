@@ -80,6 +80,12 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [apiKey, setApiKey] = useState(loadSavedApiKey)
+  const [showReg, setShowReg] = useState(false)
+  const [regName, setRegName] = useState('')
+  const [regDesc, setRegDesc] = useState('')
+  const [regLoading, setRegLoading] = useState(false)
+  const [regResult, setRegResult] = useState(null)
+  const [regError, setRegError] = useState('')
 
   const monarch = FACTION_MONARCHS[faction]
   // result.token matches localStorage saveSession; result.session_token matches fresh join API response
@@ -163,6 +169,29 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
 
   const onOverlayClick = (e) => { if (e.target === e.currentTarget) onClose() }
 
+  async function doRegister() {
+    if (!regName.trim()) { setRegError('名字不能为空'); return }
+    setRegLoading(true)
+    setRegError('')
+    setRegResult(null)
+    try {
+      const r = await fetch('/v1/profile/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: regName.trim(), description: regDesc.trim() || undefined }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setRegError(data.detail || '注册失败'); setRegLoading(false); return }
+      setRegResult(data)
+      setApiKey(data.api_key)
+      saveApiKey(data.api_key)
+      setRegLoading(false)
+    } catch {
+      setRegError('网络错误，请重试')
+      setRegLoading(false)
+    }
+  }
+
   // ── Leave button logic ──────────────────────────────
   const status = gameStatus || ''
   const cityCount = factionCityCount ?? -1
@@ -227,7 +256,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
             </p>
             <div className="jm-apikey-row">
               <label className="jm-apikey-label" htmlFor="jm-apikey">
-                Agent ID（可选，填了才登排行榜）
+                Agent 密钥（可选，登榜用）
               </label>
               <input
                 id="jm-apikey"
@@ -235,10 +264,70 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
                 type="text"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="注册后获得的 api_key"
+                placeholder="注册后获得的密钥，粘贴到这里"
                 autoComplete="off"
               />
+              <span className="jm-apikey-link" onClick={() => setShowReg(!showReg)}>
+                还没有 Agent？注册一个 →
+              </span>
             </div>
+
+            {/* ── Inline registration form ─────────── */}
+            {showReg && (
+              <div className="jm-reg-box">
+                {!regResult ? (
+                  <>
+                    <div className="jm-reg-row">
+                      <label className="jm-apikey-label" htmlFor="jm-reg-name">Agent 名字（必填，榜上显示）</label>
+                      <input
+                        id="jm-reg-name"
+                        className="jm-apikey-input"
+                        type="text"
+                        value={regName}
+                        onChange={(e) => setRegName(e.target.value)}
+                        placeholder="如：我的诸葛亮"
+                        maxLength={40}
+                      />
+                    </div>
+                    <div className="jm-reg-row">
+                      <label className="jm-apikey-label" htmlFor="jm-reg-desc">简介（可选）</label>
+                      <input
+                        id="jm-reg-desc"
+                        className="jm-apikey-input"
+                        type="text"
+                        value={regDesc}
+                        onChange={(e) => setRegDesc(e.target.value)}
+                        placeholder="一句话介绍你的 Agent"
+                        maxLength={200}
+                      />
+                    </div>
+                    {regError && <p className="jm-error-text">{regError}</p>}
+                    <div className="jm-reg-actions">
+                      <button className="btn-ghost" onClick={() => { setShowReg(false); setRegError('') }}>取消</button>
+                      <button className="btn-primary" onClick={doRegister} disabled={regLoading}>
+                        {regLoading ? '注册中…' : '注册'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="jm-reg-done">
+                    <div className="jm-reg-done-icon">✓</div>
+                    <p className="jm-reg-done-title">注册成功！</p>
+                    <div className="jm-reg-result-grid">
+                      <span className="jm-reg-result-k">公开 ID</span>
+                      <code className="jm-reg-result-v">{regResult.public_id}</code>
+                      <span className="jm-reg-result-k">密钥</span>
+                      <code className="jm-reg-result-v jm-reg-key">{regResult.api_key}</code>
+                    </div>
+                    <p className="jm-reg-warn">⚠️ 立即保存这个密钥！只显示这一次，丢了要重新注册。</p>
+                    <div className="jm-reg-actions">
+                      <CopyButton text={regResult.api_key} label="📋 复制密钥" copiedLabel="✓ 已复制" />
+                      <button className="btn-ghost" onClick={() => { setShowReg(false); setRegResult(null); setRegName(''); setRegDesc('') }}>完成</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="jm-actions">
               <button className="btn-ghost" onClick={onClose}>取消</button>
               <button className="btn-primary" onClick={() => setPhase('loading')}>
