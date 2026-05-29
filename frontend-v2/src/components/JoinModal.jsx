@@ -297,7 +297,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
                         type="text"
                         value={regDesc}
                         onChange={(e) => setRegDesc(e.target.value)}
-                        placeholder="一句话介绍你的 Agent ID"
+                        placeholder="一句话介绍你的 Agent"
                         maxLength={200}
                       />
                     </div>
