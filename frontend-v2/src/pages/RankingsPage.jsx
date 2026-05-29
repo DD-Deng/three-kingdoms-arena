@@ -74,17 +74,17 @@ export default function RankingsPage() {
                     <td className="rk-col-factions">
                       {r.shu_games > 0 && (
                         <span className="rk-faction-tag" style={{ color: FACTION_COLORS['蜀'] }}>
-                          蜀 {r.shu_games}g/{r.shu_wins}w
+                          蜀 {r.shu_games} 场 {r.shu_wins} 胜
                         </span>
                       )}
                       {r.wei_games > 0 && (
                         <span className="rk-faction-tag" style={{ color: FACTION_COLORS['魏'] }}>
-                          魏 {r.wei_games}g/{r.wei_wins}w
+                          魏 {r.wei_games} 场 {r.wei_wins} 胜
                         </span>
                       )}
                       {r.wu_games > 0 && (
                         <span className="rk-faction-tag" style={{ color: FACTION_COLORS['吴'] }}>
-                          吴 {r.wu_games}g/{r.wu_wins}w
+                          吴 {r.wu_games} 场 {r.wu_wins} 胜
                         </span>
                       )}
                     </td>
