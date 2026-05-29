@@ -1012,3 +1012,44 @@ a { color: inherit; }
   background: var(--wu); color: #fff; border: 1px solid var(--wu);
   font-weight: 600;
 }
+
+/* ── Rankings page ─────────────────────────────────────── */
+.rk-table-wrap { overflow-x: auto; }
+.rk-table {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--fs-body);
+}
+.rk-table th {
+  text-align: left; padding: 12px 16px;
+  font-size: var(--fs-sm); color: var(--ink-mute); font-weight: 500;
+  border-bottom: 1px solid var(--line);
+}
+.rk-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.rk-table tr.rk-top td { background: linear-gradient(90deg, var(--bg-card), transparent); }
+.rk-table tr:hover td { background: var(--bg-card); }
+
+.rk-col-rank { width: 48px; font-size: 18px; text-align: center; }
+.rk-col-name { min-width: 160px; }
+.rk-col-num { width: 72px; text-align: center; }
+.rk-col-wr { width: 140px; }
+.rk-col-factions { min-width: 200px; }
+
+.rk-name { display: block; font-weight: 600; }
+.rk-pid { display: block; font-size: var(--fs-sm); color: var(--ink-mute); font-family: var(--font-mono); }
+
+/* Win-rate bar */
+.rk-wr-bar-bg {
+  display: inline-block; width: 60px; height: 6px;
+  background: var(--line); border-radius: 3px; vertical-align: middle; margin-right: 8px;
+}
+.rk-wr-bar {
+  display: block; height: 100%; border-radius: 3px;
+  background: currentColor;
+}
+.rk-wr-pct { font-weight: 600; font-size: var(--fs-body); }
+
+/* Faction tags */
+.rk-faction-tag {
+  display: inline-block; margin-right: 12px;
+  font-size: var(--fs-sm); font-weight: 500;
+}

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from .database import get_session
-from .models import BattleHistory, BattleLogFile
+from .models import BattleHistory, BattleLogFile, AgentProfile
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 LOG_DIR = Path("logs")
@@ -204,4 +204,47 @@ def public_stats(
         "faction_wins": faction_wins,
         "model_distribution": model_counts,
         "recent_battles": recent,
+    }
+
+
+# ── GET /public/rankings ──────────────────────────────────────
+# Minimum games to appear on leaderboard. Low during testing;
+# raise before public launch to prevent single-game flukes.
+RANKING_MIN_GAMES = 1
+
+
+@router.get("/rankings")
+def get_rankings(session: Session = Depends(get_session)):
+    profiles = session.exec(
+        select(AgentProfile).where(
+            AgentProfile.total_games >= RANKING_MIN_GAMES
+        )
+    ).all()
+
+    ranked = []
+    for p in profiles:
+        wr = p.total_wins / p.total_games if p.total_games > 0 else 0.0
+        ranked.append({
+            "public_id": p.public_id,
+            "display_name": p.display_name,
+            "total_games": p.total_games,
+            "total_wins": p.total_wins,
+            "win_rate": round(wr * 100, 1),
+            "shu_games": p.shu_games,
+            "shu_wins": p.shu_wins,
+            "wei_games": p.wei_games,
+            "wei_wins": p.wei_wins,
+            "wu_games": p.wu_games,
+            "wu_wins": p.wu_wins,
+        })
+
+    ranked.sort(key=lambda r: (-r["win_rate"], -r["total_games"]))
+
+    for i, r in enumerate(ranked):
+        r["rank"] = i + 1
+
+    return {
+        "rankings": ranked,
+        "min_games": RANKING_MIN_GAMES,
+        "total_ranked": len(ranked),
     }

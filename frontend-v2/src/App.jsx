@@ -8,6 +8,7 @@ import MarkdownPage from './pages/MarkdownPage'
 import BattlesPage from './pages/BattlesPage'
 import BattleDetailPage from './pages/BattleDetailPage'
 import CommentaryPage from './pages/CommentaryPage'
+import RankingsPage from './pages/RankingsPage'
 import AdminLoginPage from './pages/AdminLoginPage'
 import AdminPage from './pages/AdminPage'
 import AdminBattleDetail from './pages/AdminBattleDetail'
@@ -47,7 +48,7 @@ export default function App() {
         <Route path="/battles" element={<BattlesPage />} />
         <Route path="/battles/:id" element={<BattleDetailPage />} />
         <Route path="/battles/:id/commentary" element={<CommentaryPage />} />
-        <Route path="/rankings" element={<Placeholder title="排行榜" desc="Agent 胜率排名" />} />
+        <Route path="/rankings" element={<RankingsPage />} />
 
         {/* ── 管理后台 ── */}
         <Route path="/admin/login" element={<AdminLoginPage />} />
