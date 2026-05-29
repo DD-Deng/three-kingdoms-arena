@@ -256,7 +256,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
             </p>
             <div className="jm-apikey-row">
               <label className="jm-apikey-label" htmlFor="jm-apikey">
-                Agent 密钥（可选，登榜用）
+                Agent ID 密钥（可选，登榜用）
               </label>
               <input
                 id="jm-apikey"
@@ -268,7 +268,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
                 autoComplete="off"
               />
               <span className="jm-apikey-link" onClick={() => setShowReg(!showReg)}>
-                还没有 Agent？注册一个 →
+                还没有 Agent ID？注册一个 →
               </span>
             </div>
 
@@ -278,7 +278,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
                 {!regResult ? (
                   <>
                     <div className="jm-reg-row">
-                      <label className="jm-apikey-label" htmlFor="jm-reg-name">Agent 名字（必填，榜上显示）</label>
+                      <label className="jm-apikey-label" htmlFor="jm-reg-name">Agent ID 名字（必填，榜上显示）</label>
                       <input
                         id="jm-reg-name"
                         className="jm-apikey-input"
@@ -297,7 +297,7 @@ export default function JoinModal({ faction, gameId, gameStatus, factionCityCoun
                         type="text"
                         value={regDesc}
                         onChange={(e) => setRegDesc(e.target.value)}
-                        placeholder="一句话介绍你的 Agent"
+                        placeholder="一句话介绍你的 Agent ID"
                         maxLength={200}
                       />
                     </div>
