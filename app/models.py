@@ -207,3 +207,25 @@ class BattleLogFile(SQLModel, table=True):
     file_type: str  # jsonl | private_thoughts | stdout | commentary | battle_log
     agent_name: Optional[str] = None
     file_path: str
+
+
+# ═══════════════════════════════════════════════════════════════
+# AgentProfile —— 跨局持久身份（排行榜 + 战绩）
+# ═══════════════════════════════════════════════════════════════
+
+class AgentProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    public_id: str = Field(index=True, unique=True)
+    api_key_hash: str
+    display_name: str
+    description: Optional[str] = Field(default=None)
+    created_at: str = Field(default_factory=_now)
+    # Stats — all default 0
+    total_games: int = Field(default=0)
+    total_wins: int = Field(default=0)
+    shu_games: int = Field(default=0)
+    shu_wins: int = Field(default=0)
+    wei_games: int = Field(default=0)
+    wei_wins: int = Field(default=0)
+    wu_games: int = Field(default=0)
+    wu_wins: int = Field(default=0)

@@ -10,7 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 from .config import ARENA_SERVER_URL as SERVER_URL
 from .database import get_session
 from . import lobby
-from .models import Session as SessionModel
+from .models import Session as SessionModel, AgentProfile
 
 
 router = APIRouter(prefix="/v1", tags=["lobby"])
@@ -104,6 +104,67 @@ def _check_csrf(request: Request) -> bool:
     if not cookie_token or not header_token or cookie_token != header_token:
         raise HTTPException(status_code=403, detail="csrf_token_missing_or_mismatch")
     return True
+
+
+# ═══════════════════════════════════════════════════════════════
+# Agent profile registration — persistent cross-game identity
+# ═══════════════════════════════════════════════════════════════
+
+MAX_DISPLAY_NAME_LEN = 40
+MAX_DESCRIPTION_LEN = 200
+
+
+@router.post("/profile/register")
+def register_profile(body: dict, session: Session = Depends(get_session)):
+    """Register a persistent agent profile. Returns public_id and api_key.
+
+    api_key is only returned once — store it securely.
+    """
+    import hashlib
+
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="display_name 不能为空")
+    if len(display_name) > MAX_DISPLAY_NAME_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"display_name 不能超过 {MAX_DISPLAY_NAME_LEN} 字符",
+        )
+
+    description = (body.get("description") or "").strip() or None
+    if description and len(description) > MAX_DESCRIPTION_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"description 不能超过 {MAX_DESCRIPTION_LEN} 字符",
+        )
+
+    api_key = secrets.token_hex(32)
+    api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+    # Generate unique public_id — retry on collision
+    from sqlmodel import select as _select
+    for _ in range(5):
+        public_id = "agt_" + secrets.token_hex(6)
+        existing = session.exec(
+            _select(AgentProfile).where(AgentProfile.public_id == public_id)
+        ).first()
+        if existing is None:
+            break
+
+    profile = AgentProfile(
+        public_id=public_id,
+        api_key_hash=api_key_hash,
+        display_name=display_name,
+        description=description,
+    )
+    session.add(profile)
+    session.commit()
+
+    return {
+        "public_id": public_id,
+        "api_key": api_key,
+        "display_name": display_name,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -10,7 +10,7 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from sqlmodel import Session, select
 
-from .models import Game, Slot, Session as SessionModel, Agent, Player, RegisteredAgent, BattleHistory
+from .models import Game, Slot, Session as SessionModel, Agent, Player, RegisteredAgent, BattleHistory, AgentProfile
 from . import engine as eng
 
 
@@ -1177,6 +1177,20 @@ def get_session_agent(session: Session, token: str) -> Agent:
         raise ValueError("未找到对应的 agent")
 
     return agent
+
+
+# ═══════════════════════════════════════════════════════════════
+# Agent profile — persistent identity verification
+# ═══════════════════════════════════════════════════════════════
+
+
+def verify_api_key(session: Session, api_key: str) -> AgentProfile | None:
+    """Verify an API key and return the associated AgentProfile, or None."""
+    import hashlib
+    h = hashlib.sha256(api_key.encode()).hexdigest()
+    return session.exec(
+        select(AgentProfile).where(AgentProfile.api_key_hash == h)
+    ).first()
 
 
 # ═══════════════════════════════════════════════════════════════
