@@ -1,10 +1,6 @@
-/* InkNav — shared site navigation (vermilion seal + frosted glass)
-   Self-contained: all variables defined on .ink-nav, no .ink-home dependency */
+/* InkNav — shared site navigation (vermilion seal + frosted glass) */
 
 .ink-nav {
-  --vermillion:   #b03a2e;
-  --vermillion-d: #8c2c22;
-
   position: sticky;
   top: 0;
   z-index: 50;

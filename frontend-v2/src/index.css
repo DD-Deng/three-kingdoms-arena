@@ -1,28 +1,4 @@
-/* ── Dark theme (legacy — LobbyV2 / SpectateV2 until Phase 4-5 migration) */
-.theme-dark {
-  --bg: #1a1a1a;
-  --panel: #242424;
-  --line: #333;
-  --ink: #e0d8c0;
-  --ink-dim: #888;
-  --ink-mute: #555;
-  --gold: #c8a84e;
-  --gold-dim: #8a7030;
-  --accent: #c4453a;
-  --font-sans: 'Noto Serif SC', serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --shu: #c4453a;
-  --wei: #3a6dc4;
-  --wu: #3a9a4a;
-
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.6;
-  min-height: 100vh;
-}
+/* ── Legacy app shell (LobbyV2 / SpectateV2 — kept for reference, most rules unused) */
 html, body { min-height: 100vh; }
 
 /* ── App shell ───────────────────────────────── */

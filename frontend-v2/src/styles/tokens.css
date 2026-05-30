@@ -5,6 +5,7 @@
 :root {
   /* ── 背景 ── */
   --bg:        #f4ecde;   /* 主背景 (米色) */
+  --bg-2:      #ebe0c6;   /* 深米 (ink secondary) */
   --panel:     #fbf6ec;   /* 卡片背景 (浅米) */
   --panel-2:   #fffaf0;   /* 次级面板 (更浅) */
 
@@ -21,9 +22,11 @@
   --gold:      #1a1614;   /* ink 主题下 gold 复用主文字色 */
   --gold-dim:  #5a5048;
   --accent:    #b34237;   /* 红色强调 (按钮、标记块) */
+  --vermillion:    #b03a2e;   /* 朱红 (ink seals + branding) */
+  --vermillion-d:  #8c2c22;   /* 深朱红 */
 
   /* ── 阵营色 ── */
-  --shu:       #b34237;   /* 蜀红 */
+  --shu:       #b03a2e;   /* 蜀红 (aligned with vermillion) */
   --wei:       #2d4f78;   /* 魏蓝 */
   --wu:        #2d6b3d;   /* 吴绿 */
 
@@ -73,6 +76,24 @@ a { color: inherit; }
   min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
+  position: relative;
+}
+
+/* Paper texture overlay — subtle ink-wash noise, site-wide */
+.site::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(176,58,46,0.02), transparent 60%),
+    radial-gradient(ellipse 60% 80% at 0% 100%, rgba(31,26,22,0.03), transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.2  0 0 0 0 0.15  0 0 0 0 0.1  0 0 0 0.04 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+  background-size: cover, cover, 240px 240px;
+  background-blend-mode: normal, normal, multiply;
+  opacity: 0.25;
+  mix-blend-mode: multiply;
 }
 
 /* ── Top nav ──────────────────────────────────── */
