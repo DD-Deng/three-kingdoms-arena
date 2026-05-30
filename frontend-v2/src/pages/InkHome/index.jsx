@@ -12,7 +12,7 @@ const TWEAK_DEFAULTS = {
   hero_mode: "auto",
   lobby_state: "mixed",
   saved_session: "none",
-  bg_opacity: 0.8,
+  bg_opacity: 0.3,
   bg_motion: true,
   bg_layout: "fill",
 };
