@@ -1,5 +1,6 @@
 // InkHome — ink-wash homepage preview
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './InkHome.css';
 import './InkLandscape.css';
 import './InkDragon.css';
@@ -10,6 +11,8 @@ import { InkDragon } from './InkDragon';
 import { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakToggle, TweakRadio, TweakSelect } from './TweaksPanel';
 import usePolling from '../../hooks/usePolling';
 import { FACTION_COLORS, isGameInProgress } from '../../constants';
+import { api } from '../../api';
+import JoinModal, { getSession } from '../../components/JoinModal';
 
 const TWEAK_DEFAULTS = {
   hero_mode: "auto",
@@ -252,23 +255,26 @@ function StatusRow({ data }) {
 }
 
 // ── Slots ─────────────────────────────────────────────────────
-function Slots({ data, savedSession }) {
-  const slots = data?.slots || {};
+function Slots({ slots, gameStatus, gameId, onJoin, onAssignAI, onReleaseAI, onReady, onLeave, onViewInstruction }) {
   return (
     <div className="slots">
       {FACTIONS.map((f) => {
-        const slot = slots[f];
-        const ui = slotUI(slot, f, data.status);
+        const slot = slots?.[f];
+        const ui = slotUI(slot, f, gameStatus);
         const info = F_INFO[f];
-        const hasSession = savedSession === f;
+        const saved = getSession(f);
+        const hasSavedSession = saved && saved.game_id === gameId;
+        const tokenValue = saved?.session_token || saved?.token;
         return (
           <div key={f} className="slot" style={{ "--fc": info.color }}>
-            {hasSession && (
+            {/* Saved session banner */}
+            {hasSavedSession && tokenValue && (
               <div className="slot-banner">
                 <span className="ok">✓</span>
                 <span>已加入 {f} 阵营</span>
-                <span style={{ color: "var(--ink-mute)", fontSize: 10 }}>· Token 余 27 分钟</span>
-                <button className="slot-banner-btn">📋 查看接入指令</button>
+                <span style={{ color: "var(--ink-mute)", fontSize: 10 }}>· Token 本局有效</span>
+                <button className="slot-banner-btn" onClick={() => onLeave(f, tokenValue)}>✕ 退出</button>
+                <button className="slot-banner-btn" onClick={() => onViewInstruction(f, saved)}>📋 查看接入指令</button>
               </div>
             )}
             <div className="slot-top">
@@ -288,10 +294,28 @@ function Slots({ data, savedSession }) {
               <div className="slot-actions">
                 {ui.actions.map((a) => (
                   <button key={a.id} className={"slot-btn " + a.kind}
-                          style={a.kind === "primary" ? { "--fc": info.color } : {}}>
+                    style={a.kind === "primary" ? { "--fc": info.color } : {}}
+                    onClick={() => {
+                      if (a.id === 'join') onJoin(f);
+                      else if (a.id === 'grab') onJoin(f);
+                      else if (a.id === 'ai') onAssignAI(f);
+                      else if (a.id === 'release') onReleaseAI(f);
+                      else if (a.id === 'ready') {
+                        const s = saved && saved.game_id === gameId ? saved : null;
+                        const tok = s?.session_token || s?.token;
+                        if (tok) onReady(f, tok);
+                      }
+                    }}
+                  >
                     {a.label}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {slot?.status === 'disconnected' && slot?.reconnect_remaining_sec > 0 && (
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--ink-mute)', marginTop: 8 }}>
+                该位置玩家掉线，{fmtDuration(slot.reconnect_remaining_sec)} 后自动释放给托管 AI
               </div>
             )}
           </div>
@@ -372,11 +396,8 @@ function Footer({ today }) {
 }
 
 // ── HomePage root ─────────────────────────────────────────────
-function HomePagePreview({ data, savedSession, heroMode, isLoading }) {
+function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDeadline, heroMode, isLoading, onJoin, onAssignAI, onReleaseAI, onReady, onLeave, onViewInstruction }) {
   const today = "丙午年 · 仲夏 · 兰纳署";
-  const gameStatus = data?.status;
-  const winner = data?.winner;
-  const slots = data?.slots;
 
   if (!data) {
     return (
@@ -436,10 +457,12 @@ function HomePagePreview({ data, savedSession, heroMode, isLoading }) {
           </div>
         )}
 
-        <Slots data={data || {}} savedSession={savedSession} />
+        <Slots slots={slots} gameStatus={gameStatus} gameId={gameId}
+          onJoin={onJoin} onAssignAI={onAssignAI} onReleaseAI={onReleaseAI}
+          onReady={onReady} onLeave={onLeave} onViewInstruction={onViewInstruction} />
         <BattlePreviewCard data={data || {}} />
         <div className="spectate-row">
-          <a href={`/spectate?game=${data?.game_id}`} className="btn-ghost" style={{ textDecoration: 'none' }}>仅观战(不占槽位)</a>
+          <button className="btn-ghost" onClick={() => navigate(`/spectate?game=${data?.game_id}`)}>仅观战(不占槽位)</button>
         </div>
 
         <Footer today={today} />
@@ -448,11 +471,38 @@ function HomePagePreview({ data, savedSession, heroMode, isLoading }) {
   );
 }
 
-// ── InkHomePage root — replicates original homepage.html App ──
+// ── Countdown overlay ──────────────────────────────────────────
+function CountdownOverlay({ deadline }) {
+  const [sec, setSec] = useState(5);
+  useEffect(() => {
+    if (!deadline) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000));
+      setSec(remaining);
+    };
+    tick();
+    const timer = setInterval(tick, 200);
+    return () => clearInterval(timer);
+  }, [deadline]);
+  if (sec <= 0) return null;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(31,26,22,0.75)', backdropFilter: 'blur(6px)',
+    }}>
+      <div style={{ fontSize: 96, fontWeight: 900, color: '#faf3e2', fontFamily: 'var(--font-sans)', lineHeight: 1 }}>{sec}</div>
+      <div style={{ fontSize: 18, color: 'rgba(250,243,226,0.7)', marginTop: 12, letterSpacing: 6 }}>倒计时</div>
+    </div>
+  );
+}
+
+// ── InkHomePage root — full lobby logic ───────────────────────
 function InkHomePage() {
+  const navigate = useNavigate();
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  // Adaptive polling: lobby 5s / countdown 1s / active 3s / finished stop
+  // Adaptive polling
   const [pollInterval, setPollInterval] = useState(5000);
   const { data, isLoading } = usePolling('/v1/lobby/status', { intervalMs: pollInterval });
 
@@ -465,16 +515,124 @@ function InkHomePage() {
     setPollInterval(prev => prev === next ? prev : next);
   }, [data?.status]);
 
+  // Optimistic updates
+  const [localSlots, setLocalSlots] = useState(null);
+  const pendingRef = useRef(null);
+  const [msg, setMsg] = useState(null);
+  const msgTimer = useRef(null);
+
+  // Modal state
+  const [modalFaction, setModalFaction] = useState(null);
+  const [modalPhase, setModalPhase] = useState(null);
+  const [savedResult, setSavedResult] = useState(null);
+
+  const gameId = data?.game_id;
+  const gameStatus = data?.status;
+  const winner = data?.winner;
+  const slots = localSlots || data?.slots;
+  const countdownDeadline = data?.countdown_deadline;
+
+  // Resolve optimistic updates
+  useEffect(() => {
+    const pending = pendingRef.current;
+    if (!pending) { setLocalSlots(null); return; }
+    const serverSlot = data?.slots?.[pending.faction];
+    if (serverSlot && pending.check(serverSlot)) { setLocalSlots(null); pendingRef.current = null; }
+    else if (Date.now() > pending.until) { setLocalSlots(null); pendingRef.current = null; }
+  }, [data?.slots]);
+
+  function flash(text) { setMsg(text); clearTimeout(msgTimer.current); msgTimer.current = setTimeout(() => setMsg(null), 5000); }
+  function _revert(faction) { setLocalSlots(prev => { if (!prev) return prev; const next = { ...prev }; delete next[faction]; return next; }); }
+
+  // ── Write handlers (C2) ────────────────────────────────────
+  async function actJoin(faction) {
+    flash(null);
+    pendingRef.current = { faction, check: s => s.status === 'occupied', until: Date.now() + 5000 };
+    setLocalSlots(prev => ({ ...(prev || slots), [faction]: { status: 'occupied', ready: false, agent_display_name: '你', ip: '***' } }));
+    try { await api.joinLobby(faction); flash(`已加入 ${faction}`); }
+    catch (e) { _revert(faction); pendingRef.current = null; if (e.code === 'COUNTDOWN_STARTED') flash('倒计时已启动，无法加入'); else flash(`加入失败: ${e.message}`); }
+  }
+  async function actAssignAI(faction) {
+    flash(null);
+    pendingRef.current = { faction, check: s => s.status === 'ai_managed', until: Date.now() + 5000 };
+    setLocalSlots(prev => ({ ...(prev || slots), [faction]: { status: 'ai_managed', ready: true, agent_display_name: `托管AI-${faction}` } }));
+    try { await api.assignAI(faction); flash(`已配 ${faction} 为 AI 托管`); }
+    catch (e) { _revert(faction); pendingRef.current = null; flash(e.code === 'recruit_window_active' ? `招募期内，还有 ${e.body?.remaining_sec ?? '?'} 秒可配 AI` : `配 AI 失败: ${e.message}`); }
+  }
+  async function actReleaseAI(faction) {
+    flash(null);
+    pendingRef.current = { faction, check: s => s.status === 'open', until: Date.now() + 5000 };
+    setLocalSlots(prev => ({ ...(prev || slots), [faction]: { status: 'open', ready: false } }));
+    try { await api.releaseAI(faction); flash(`已释放 ${faction} AI 托管`); }
+    catch (e) { _revert(faction); pendingRef.current = null; flash(`释放失败: ${e.message}`); }
+  }
+  async function actReady(faction, token) {
+    flash(null);
+    pendingRef.current = { faction, check: s => s.ready === true, until: Date.now() + 5000 };
+    setLocalSlots(prev => ({ ...(prev || slots), [faction]: { ...((prev || slots)[faction]), ready: true } }));
+    try { await api.ready(token); flash('已就绪'); }
+    catch (e) { _revert(faction); pendingRef.current = null; flash(`Ready 失败: ${e.message}`); }
+  }
+  async function doLeave(faction, token) {
+    try {
+      const r = await fetch(`/v1/games/${gameId}/leave?token=${encodeURIComponent(token)}`, { method: 'POST' });
+      if (r.status === 401 || r.status === 410) {
+        try { const sessions = JSON.parse(localStorage.getItem('arena_sessions') || '{}'); delete sessions[faction]; localStorage.setItem('arena_sessions', JSON.stringify(sessions)); } catch {}
+        alert('Token 已失效，页面将刷新'); window.location.reload(); return;
+      }
+      const d = await r.json();
+      if (!r.ok) { flash(d.detail || '退出失败'); return; }
+      try { const sessions = JSON.parse(localStorage.getItem('arena_sessions') || '{}'); delete sessions[faction]; localStorage.setItem('arena_sessions', JSON.stringify(sessions)); } catch {}
+      if (d.redirect_to) window.location.href = d.redirect_to;
+      else flash('已退出');
+    } catch { flash('退出请求失败'); }
+  }
+
   return (
     <>
       <InkLandscape opacity={t.bg_opacity} motion={t.bg_motion} layout={t.bg_layout} />
       <InkDragon enabled={t.bg_motion} />
+
+      {/* Flash message */}
+      {msg && (
+        <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 200,
+          background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8,
+          padding: '10px 24px', fontSize: 'var(--fs-body)', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
+          {msg}
+        </div>
+      )}
+
       <HomePagePreview
         data={data}
-        savedSession={t.saved_session === "none" ? null : t.saved_session}
+        slots={slots}
+        gameId={gameId}
+        gameStatus={gameStatus}
+        winner={winner}
+        countdownDeadline={countdownDeadline}
         heroMode={t.hero_mode}
         isLoading={isLoading}
+        onJoin={(f) => { setModalPhase('confirm'); setModalFaction(f); }}
+        onAssignAI={actAssignAI}
+        onReleaseAI={actReleaseAI}
+        onReady={actReady}
+        onLeave={doLeave}
+        onViewInstruction={(f, saved) => { setModalFaction(f); setModalPhase('done'); setSavedResult(saved); }}
       />
+
+      {/* Countdown overlay */}
+      {gameStatus === 'countdown' && countdownDeadline && <CountdownOverlay deadline={countdownDeadline} />}
+
+      {/* JoinModal */}
+      {modalFaction && (
+        <JoinModal faction={modalFaction} gameId={gameId}
+          gameStatus={gameStatus}
+          slotReady={slots?.[modalFaction]?.ready}
+          onClose={() => { setModalFaction(null); setModalPhase(null); setSavedResult(null); }}
+          initialPhase={modalPhase || 'confirm'}
+          preResult={savedResult}
+          onLeave={(d) => { setModalFaction(null); setModalPhase(null); setSavedResult(null); if (d.redirect_to) window.location.href = d.redirect_to; }} />
+      )}
+
       <TweaksPanel title="Tweaks">
         <TweakSection title="水墨背景">
           <TweakRadio label="布局" value={t.bg_layout}
