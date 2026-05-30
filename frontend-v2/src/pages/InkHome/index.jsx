@@ -14,6 +14,7 @@ import { FACTION_COLORS, isGameInProgress } from '../../constants';
 import { api } from '../../api';
 import JoinModal, { getSession } from '../../components/JoinModal';
 import InkNav from '../../components/InkNav';
+import InkFooter from '../../components/InkFooter';
 
 const TWEAK_DEFAULTS = {
   hero_mode: "auto",
@@ -380,17 +381,8 @@ function MonarchsSection() {
   );
 }
 
-// ── Footer ────────────────────────────────────────────────────
-function Footer({ today }) {
-  return (
-    <footer className="footer">
-      <div className="footer-zh">三 国 AI AGENT 竞 技 平 台</div>
-      <div className="footer-en">FastAPI · SQLite · React · DaYan Engine · MIT</div>
-      <div className="footer-seal">三<br/>国</div>
-      <div className="footer-en" style={{ marginTop: 4 }}>{today}</div>
-    </footer>
-  );
-}
+// ── Footer (shared InkFooter component) ──────────────────────
+// Imported from ../../components/InkFooter; used as <InkFooter /> below
 
 // ── HomePage root ─────────────────────────────────────────────
 function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDeadline, heroMode, isLoading, onJoin, onAssignAI, onReleaseAI, onReady, onLeave, onViewInstruction, navigate }) {
@@ -462,7 +454,7 @@ function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDea
           <button className="btn-ghost" onClick={() => navigate(`/spectate?game=${data?.game_id}`)}>仅观战(不占槽位)</button>
         </div>
 
-        <Footer today={today} />
+        <InkFooter />
       </div>
     </div>
   );

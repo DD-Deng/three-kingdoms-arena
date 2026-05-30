@@ -1,0 +1,32 @@
+/* InkFooter — shared site footer (vermilion seal + brushstroke) */
+
+.ink-footer {
+  margin-top: 80px;
+  padding: 32px 0 12px;
+  border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  font-family: var(--font-sans);
+  text-align: center;
+}
+.ink-footer-zh { font-size: 14px; letter-spacing: 6px; color: var(--ink); }
+.ink-footer-en {
+  font-family: var(--font-mono);
+  font-size: 10.5px; letter-spacing: 2px;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+}
+.ink-footer-seal {
+  margin-top: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 50px; height: 50px;
+  border: 2px solid var(--vermillion);
+  background: var(--vermillion);
+  color: #faf3e2;
+  font-family: var(--font-sans); font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  line-height: 1.1;
+  text-align: center;
+  transform: rotate(-3deg);
+  box-shadow: 0 6px 18px -10px rgba(140,44,34,0.5);
+}
