@@ -681,9 +681,9 @@ a { color: inherit; }
    Markdown pages (rules, api-docs, access)
    ═══════════════════════════════════════════════════════════════ */
 
-.md-page { max-width: 860px; margin: 0 auto; padding: 24px 0 60px; }
+.md-page { max-width: 860px; margin: 0 auto; padding: 36px 0 60px; }
 .md-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
-.md-error { background: #fef0ef; border: 1px solid var(--accent); color: var(--accent); padding: 12px 16px; margin-bottom: 20px; font-size: var(--fs-nav); }
+.md-error { background: rgba(176,58,46,0.08); border: 1px solid var(--vermillion); color: var(--vermillion); padding: 12px 16px; margin-bottom: 20px; font-size: var(--fs-nav); }
 
 .md-eyebrow {
   font-family: var(--font-mono); font-size: var(--fs-mono);
@@ -693,22 +693,34 @@ a { color: inherit; }
 
 .md-title {
   font-size: var(--fs-h1); font-weight: 700; letter-spacing: 1px;
-  margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--line);
+  margin-bottom: 32px; padding-bottom: 16px;
+  border-bottom: 1px solid var(--vermillion);
+  color: var(--ink);
 }
 
-.md-body { font-size: var(--fs-body); line-height: 1.75; color: var(--ink); }
-.md-body h1 { font-size: 24px; margin: 32px 0 12px; font-weight: 700; }
-.md-body h2 { font-size: 20px; margin: 28px 0 10px; font-weight: 700; border-bottom: 1px solid var(--line-2); padding-bottom: 6px; }
-.md-body h3 { font-size: 16px; margin: 20px 0 8px; font-weight: 600; }
+/* Paper panel wrapper */
+.md-body {
+  font-size: var(--fs-body); line-height: 1.75; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 36px 40px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset,
+              0 0 0 1px rgba(31,26,22,0.03),
+              0 16px 36px -16px rgba(31,26,22,0.12);
+}
+.md-body h1 { font-size: 24px; margin: 0 0 12px; font-weight: 700; }
+.md-body h1:first-child { margin-top: 0; }
+.md-body h2 { font-size: 20px; margin: 36px 0 12px; font-weight: 700; border-bottom: 1px solid var(--line-2); padding-bottom: 8px; color: var(--ink); }
+.md-body h2:first-child { margin-top: 0; }
+.md-body h3 { font-size: 16px; margin: 24px 0 8px; font-weight: 600; }
 .md-body p { margin-bottom: 14px; }
 .md-body code {
   font-family: var(--font-mono); font-size: var(--fs-sm);
   background: var(--panel-2); padding: 2px 6px; border: 1px solid var(--line-2);
-  border-radius: 2px; color: var(--accent);
+  color: var(--vermillion);
 }
 .md-body pre {
   font-family: var(--font-mono); font-size: var(--fs-sm);
-  background: var(--panel); border: 1px solid var(--line);
+  background: var(--bg); border: 1px solid var(--line);
   padding: 14px 16px; overflow-x: auto; line-height: 1.6;
   margin: 12px 0 18px; color: var(--ink);
 }
@@ -717,14 +729,40 @@ a { color: inherit; }
 .md-body th { background: var(--panel); font-family: var(--font-mono); font-size: var(--fs-mono); font-weight: 600; padding: 10px 12px; border: 1px solid var(--line); text-align: left; }
 .md-body td { padding: 8px 12px; border: 1px solid var(--line-2); }
 .md-body blockquote {
-  border-left: 3px solid var(--accent); padding: 6px 14px;
+  border-left: 3px solid var(--vermillion); padding: 6px 14px;
   margin: 14px 0; color: var(--ink-dim); background: var(--panel-2);
 }
 .md-body ul, .md-body ol { padding-left: 22px; margin: 10px 0; }
 .md-body li { margin-bottom: 4px; }
-.md-body hr { border: none; border-top: 1px solid var(--line); margin: 28px 0; }
-.md-body a { color: var(--accent); text-decoration: underline; }
+.md-body hr { border: none; margin: 28px 0; }
+.md-body a { color: var(--vermillion); text-decoration: underline; }
+.md-body a:hover { color: var(--vermillion-d); }
 .md-body strong { font-weight: 700; }
+
+/* ── Reusable brush-stroke divider (global, not scoped) ─── */
+.brush-divider {
+  margin: 40px 0;
+  display: flex; align-items: center; gap: 18px;
+}
+.brush-divider svg { flex: 1; height: 14px; }
+.brush-divider-label {
+  font-family: var(--font-sans);
+  font-size: 13px; letter-spacing: 8px;
+  color: var(--ink);
+  padding: 0 6px;
+  position: relative;
+}
+.brush-divider-label .seal {
+  display: inline-block;
+  width: 18px; height: 18px;
+  background: var(--vermillion);
+  color: #faf3e2;
+  font-size: 10px; font-weight: 700;
+  text-align: center; line-height: 18px;
+  vertical-align: middle;
+  margin-left: 10px;
+  letter-spacing: 0;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    Battle pages — list, detail, commentary
