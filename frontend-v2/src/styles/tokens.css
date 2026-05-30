@@ -768,28 +768,34 @@ a { color: inherit; }
    Battle pages — list, detail, commentary
    ═══════════════════════════════════════════════════════════════ */
 
-.bt-page { max-width: 900px; margin: 0 auto; padding: 24px 0 60px; }
+.bt-page { max-width: 900px; margin: 0 auto; padding: 36px 0 60px; }
 .bt-loading { padding: 60px 0; text-align: center; color: var(--ink-dim); }
-.bt-error { background: #fef0ef; border: 1px solid var(--accent); color: var(--accent); padding: 12px 16px; margin-bottom: 20px; }
+.bt-error { background: rgba(176,58,46,0.08); border: 1px solid var(--vermillion); color: var(--vermillion); padding: 12px 16px; margin-bottom: 20px; font-size: var(--fs-nav); }
 .bt-back { display: inline-block; color: var(--ink-dim); text-decoration: none; font-size: var(--fs-nav); margin-bottom: 20px; }
 .bt-back:hover { color: var(--ink); }
 .bt-header { margin-bottom: 8px; }
 
-/* ── Battle list ──────────────────────────────── */
+/* ── Battle list — ink paper panel ─────────────── */
 .bt-empty { text-align: center; padding: 60px 0; color: var(--ink-dim); }
 .bt-empty p { font-size: var(--fs-body); margin-bottom: 8px; }
 .bt-empty-hint { font-size: var(--fs-nav); color: var(--ink-mute); }
 
-.bt-list { display: flex; flex-direction: column; border: 1px solid var(--line); }
+.bt-list {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset,
+              0 0 0 1px rgba(31,26,22,0.03),
+              0 16px 36px -16px rgba(31,26,22,0.12);
+}
 .bt-row {
   display: flex; align-items: center; gap: 18px;
-  padding: 16px 20px; background: var(--panel);
-  text-decoration: none; color: inherit;
+  padding: 16px 20px; text-decoration: none; color: inherit;
   border-bottom: 1px solid var(--line-2);
 }
 .bt-row:last-child { border-bottom: none; }
-.bt-row:hover { background: var(--panel-2); }
-.bt-id { font-family: var(--font-mono); font-size: 16px; color: var(--accent); font-weight: 600; min-width: 60px; }
+.bt-row:hover { background: rgba(176,58,46,0.04); }
+.bt-id { font-family: var(--font-mono); font-size: 16px; color: var(--vermillion); font-weight: 600; min-width: 60px; }
 .bt-mid { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .bt-line1 { display: flex; gap: 10px; align-items: center; }
 .bt-model { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink); }
@@ -798,38 +804,52 @@ a { color: inherit; }
 .bt-has-commentary { color: var(--ink-dim); }
 .bt-ago { color: var(--ink-mute); font-family: var(--font-mono); font-size: var(--fs-mono); margin-left: auto; }
 
-/* ── Battle detail ─────────────────────────────── */
+/* ── Battle detail — ink paper panels ──────────── */
 .bd-header { margin-bottom: 28px; }
 .bd-header h1 { font-size: var(--fs-h1); font-weight: 700; margin-bottom: 8px; }
 .bd-meta { display: flex; gap: 16px; color: var(--ink-dim); font-size: var(--fs-nav); flex-wrap: wrap; }
 .bd-winner { font-weight: 700; }
 
-.bd-section { margin-bottom: 32px; }
-.bd-section h2 { font-size: var(--fs-h2); font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.bd-section { margin-bottom: 36px; }
+.bd-section h2 {
+  font-size: var(--fs-h2); font-weight: 600;
+  margin-bottom: 14px; padding-bottom: 8px;
+  border-bottom: 2px solid var(--vermillion);
+}
 
 .bd-cities { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
 .bd-city {
   display: flex; align-items: center; gap: 10px;
-  background: var(--panel); border: 1px solid var(--line); padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 10px 14px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset;
 }
 .bd-city-name { font-weight: 600; font-size: var(--fs-nav); }
 .bd-city-owner { font-size: var(--fs-sm); font-weight: 600; }
 .bd-city-troops { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink-dim); }
 
 .bd-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.bd-stat-card { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
+.bd-stat-card {
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 20px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset,
+              0 0 0 1px rgba(31,26,22,0.03);
+}
 .bd-stat-faction { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
 .bd-stat-row { display: flex; justify-content: space-between; font-size: var(--fs-nav); color: var(--ink-dim); padding: 4px 0; border-bottom: 1px solid var(--line-2); }
 .bd-stat-row:last-child { border-bottom: none; }
 .bd-stat-row span:last-child { font-weight: 600; color: var(--ink); font-family: var(--font-mono); }
 
-.bd-timeline { border-left: 2px solid var(--line); padding-left: 16px; }
+.bd-timeline { border-left: 2px solid var(--vermillion); padding-left: 16px; }
 .bd-tl-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: var(--fs-nav); }
 .bd-tl-tick { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--ink-mute); min-width: 30px; }
 .bd-tl-desc { color: var(--ink); }
-.bd-tl-high { font-family: var(--font-mono); font-size: 10px; color: var(--accent); border: 1px solid var(--accent); padding: 1px 6px; }
+.bd-tl-high { font-family: var(--font-mono); font-size: 10px; color: var(--vermillion); border: 1px solid var(--vermillion); padding: 1px 6px; }
 
 .bd-commentary-link { text-align: center; margin-top: 20px; }
+@media (max-width: 600px) {
+  .bd-stats-grid { grid-template-columns: 1fr; }
+}
 
 /* ── Commentary page ───────────────────────────── */
 .co-page { max-width: 720px; margin: 0 auto; padding: 24px 0 60px; }
