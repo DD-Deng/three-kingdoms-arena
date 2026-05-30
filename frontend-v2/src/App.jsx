@@ -9,6 +9,7 @@ import BattlesPage from './pages/BattlesPage'
 import BattleDetailPage from './pages/BattleDetailPage'
 import CommentaryPage from './pages/CommentaryPage'
 import RankingsPage from './pages/RankingsPage'
+import InkHomePage from './pages/InkHome'
 import AdminLoginPage from './pages/AdminLoginPage'
 import AdminPage from './pages/AdminPage'
 import AdminBattleDetail from './pages/AdminBattleDetail'
@@ -28,6 +29,9 @@ export default function App() {
   useEffect(() => { fetchCsrfToken() }, [])
   return (
     <Routes>
+      {/* 水墨首页预览 — 独立布局 */}
+      <Route path="/ink" element={<InkHomePage />} />
+
       <Route element={<MainLayout />}>
         {/* ── 首页（含完整 Lobby 功能） ── */}
         <Route path="/" element={<HomePage />} />
