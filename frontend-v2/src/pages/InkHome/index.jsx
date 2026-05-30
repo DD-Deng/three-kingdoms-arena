@@ -383,7 +383,7 @@ function InkHomePage() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   return (
-    <div className="ink-home">
+    <>
       <InkLandscape opacity={t.bg_opacity} motion={t.bg_motion} layout={t.bg_layout} />
       <InkDragon enabled={t.bg_motion} />
       <HomePagePreview
@@ -436,7 +436,7 @@ function InkHomePage() {
             ]} />
         </TweakSection>
       </TweaksPanel>
-    </div>
+    </>
   );
 }
 

@@ -313,7 +313,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   box-shadow:
     0 1px 0 rgba(255,255,255,0.6) inset,
     0 0 0 1px rgba(31,26,22,0.04),
