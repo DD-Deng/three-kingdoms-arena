@@ -1,3 +1,4 @@
+import React from "react";
 // ═══════════════════════════════════════════════════════════════
 // dragon.jsx — Ink dragon emerging from the right cliff
 // Uses dragon.png (ink-wash artwork, tinted) inside an SVG filter

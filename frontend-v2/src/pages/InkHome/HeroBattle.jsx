@@ -1,3 +1,4 @@
+import React from "react";
 // ═══════════════════════════════════════════════════════════════
 // hero-battle.jsx — Animated map for the homepage hero scroll
 // Modes:
