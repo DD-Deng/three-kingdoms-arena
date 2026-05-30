@@ -4,6 +4,18 @@ import './InkLandscape.css';
 import './InkDragon.css';
 import { FACTIONS, F_INFO, LOBBY_PRESETS } from './data';
 import { HeroBattle } from './HeroBattle';
+import { InkLandscape } from './InkLandscape';
+import { InkDragon } from './InkDragon';
+import { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakToggle, TweakRadio, TweakSelect } from './TweaksPanel';
+
+const TWEAK_DEFAULTS = {
+  hero_mode: "auto",
+  lobby_state: "mixed",
+  saved_session: "none",
+  bg_opacity: 0.3,
+  bg_motion: true,
+  bg_layout: "fill",
+};
 
 // ═══════════════════════════════════════════════════════════════
 // homepage.jsx — Polished ink-theme HomePage (preview)
@@ -351,6 +363,8 @@ function HomePagePreview({ lobbyState, savedSession, heroMode }) {
 
         <Hero />
 
+        <BattleStage heroMode={heroMode} />
+
         <StatusRow data={data} />
         <Slots data={data} savedSession={savedSession} />
         <BattlePreviewCard data={data} />
@@ -364,4 +378,66 @@ function HomePagePreview({ lobbyState, savedSession, heroMode }) {
   );
 }
 
-export default HomePagePreview;
+// ── InkHomePage root — replicates original homepage.html App ──
+function InkHomePage() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <div className="ink-home">
+      <InkLandscape opacity={t.bg_opacity} motion={t.bg_motion} layout={t.bg_layout} />
+      <InkDragon enabled={t.bg_motion} />
+      <HomePagePreview
+        lobbyState={t.lobby_state}
+        savedSession={t.saved_session === "none" ? null : t.saved_session}
+        heroMode={t.hero_mode}
+      />
+      <TweaksPanel title="Tweaks">
+        <TweakSection title="水墨背景">
+          <TweakRadio label="布局" value={t.bg_layout}
+            onChange={(v) => setTweak("bg_layout", v)}
+            options={[
+              { value: "scroll", label: "中轴" },
+              { value: "mirror", label: "镜像" },
+              { value: "fill",   label: "满幅" },
+            ]} />
+          <TweakSlider label="透明度" value={t.bg_opacity}
+            min={0} max={1} step={0.05}
+            onChange={(v) => setTweak("bg_opacity", v)} />
+          <TweakToggle label="动画交互"
+            value={t.bg_motion}
+            onChange={(v) => setTweak("bg_motion", v)} />
+        </TweakSection>
+        <TweakSection title="演武图">
+          <TweakSelect label="数据源" value={t.hero_mode}
+            onChange={(v) => setTweak("hero_mode", v)}
+            options={[
+              { value: "auto",   label: "auto · 自动选择" },
+              { value: "live",   label: "live · 实时对局" },
+              { value: "replay", label: "replay · 最近一场回放" },
+              { value: "demo",   label: "demo · 纯演示" },
+            ]} />
+        </TweakSection>
+        <TweakSection title="大厅状态">
+          <TweakSelect label="对局阶段" value={t.lobby_state}
+            onChange={(v) => setTweak("lobby_state", v)}
+            options={[
+              { value: "fresh", label: "全空缺(刚开新局)" },
+              { value: "mixed", label: "混合(2 玩家 + 1 AI)" },
+              { value: "countdown", label: "倒计时即将开打" },
+              { value: "active", label: "对局进行中" },
+            ]} />
+          <TweakSelect label="本地 session" value={t.saved_session}
+            onChange={(v) => setTweak("saved_session", v)}
+            options={[
+              { value: "none", label: "无" },
+              { value: "蜀", label: "已加入 蜀" },
+              { value: "魏", label: "已加入 魏" },
+              { value: "吴", label: "已加入 吴" },
+            ]} />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+export default InkHomePage;

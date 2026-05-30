@@ -1,3 +1,41 @@
+@keyframes il-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes il-mist-band-shift {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3%); }
+}
+
+@keyframes il-mist-drift {
+  0%,100% { transform: translateX(-60px); }
+  50%     { transform: translateX(60px); }
+}
+
+@keyframes il-puff-rise {
+  0%   { opacity: 0;   transform: translateY(20px) scale(0.85); }
+  40%  { opacity: 1;   transform: translateY(-10px) scale(1.05); }
+  100% { opacity: 0;   transform: translateY(-50px) scale(1.2); }
+}
+
+@keyframes il-bamboo-sway {
+  0%,100% { transform: rotate(-0.8deg); }
+  50%     { transform: rotate( 0.8deg); }
+}
+
+@keyframes il-bamboo-sway-strong {
+  0%,100% { transform: rotate(-2.4deg); }
+  25%     { transform: rotate( 2deg); }
+  50%     { transform: rotate(-1.8deg); }
+  75%     { transform: rotate( 2.4deg); }
+}
+
+@keyframes il-tread {
+  0%,100% { transform: translateY(0); opacity: 0.3; }
+  50%     { transform: translateY(-3px); opacity: 0.7; }
+}
+
 .ink-home {
 /* ═══════════════════════════════════════════════════════════════
    ink-landscape.css — three layouts: scroll / mirror / fill
@@ -18,10 +56,6 @@
   user-select: none;
   -webkit-user-drag: none;
   animation: il-fade-in 1.6s ease-out both;
-}
-@keyframes il-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 /* ── SCROLL: centered, natural aspect ──────────────────────── */
@@ -77,10 +111,6 @@
   animation: il-mist-band-shift 38s ease-in-out infinite;
 }
 .lay-fill.still::after { animation: none; }
-@keyframes il-mist-band-shift {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-3%); }
-}
 
 /* ── Overlay matches single-painting box for scroll/mirror ── */
 .il-overlay {
@@ -99,10 +129,6 @@
 .alive .il-mist-wrap {
   animation: il-mist-drift 42s ease-in-out infinite;
 }
-@keyframes il-mist-drift {
-  0%,100% { transform: translateX(-60px); }
-  50%     { transform: translateX(60px); }
-}
 .alive.hover-cliff .il-mist-wrap { animation-duration: 14s; }
 
 .il-cliff-glow { opacity: 0; transition: opacity 0.5s; }
@@ -112,39 +138,20 @@
 .alive.hover-cliff .il-puff {
   animation: il-puff-rise 5s ease-in-out infinite;
 }
-@keyframes il-puff-rise {
-  0%   { opacity: 0;   transform: translateY(20px) scale(0.85); }
-  40%  { opacity: 1;   transform: translateY(-10px) scale(1.05); }
-  100% { opacity: 0;   transform: translateY(-50px) scale(1.2); }
-}
 
 .alive .il-bamboo {
   transform-origin: 620px 880px;
   animation: il-bamboo-sway 5s ease-in-out infinite;
   opacity: 0.55;
 }
-@keyframes il-bamboo-sway {
-  0%,100% { transform: rotate(-0.8deg); }
-  50%     { transform: rotate( 0.8deg); }
-}
 .alive.hover-bamboo .il-bamboo {
   opacity: 1;
   animation: il-bamboo-sway-strong 1.4s ease-in-out infinite;
-}
-@keyframes il-bamboo-sway-strong {
-  0%,100% { transform: rotate(-2.4deg); }
-  25%     { transform: rotate( 2deg); }
-  50%     { transform: rotate(-1.8deg); }
-  75%     { transform: rotate( 2.4deg); }
 }
 
 .il-puff-dancers { opacity: 0.4; animation: il-tread 3.2s ease-in-out infinite; }
 .alive.hover-dancers .il-puff-dancers {
   opacity: 1; animation-duration: 1.4s;
-}
-@keyframes il-tread {
-  0%,100% { transform: translateY(0); opacity: 0.3; }
-  50%     { transform: translateY(-3px); opacity: 0.7; }
 }
 
 .still .il-mist-wrap,
