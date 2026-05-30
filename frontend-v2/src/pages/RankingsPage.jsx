@@ -53,7 +53,7 @@ export default function RankingsPage() {
             </thead>
             <tbody>
               {rankings.map(r => {
-                const wrColor = r.win_rate >= 50 ? 'var(--wu)' : 'var(--accent)'
+                const wrColor = r.win_rate >= 50 ? 'var(--wu)' : 'var(--vermillion)'
                 return (
                   <tr key={r.public_id} className={r.rank <= 3 ? 'rk-top' : ''}>
                     <td className="rk-col-rank">
