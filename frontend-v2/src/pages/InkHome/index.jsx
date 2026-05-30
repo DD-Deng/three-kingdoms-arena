@@ -326,8 +326,9 @@ function Slots({ slots, gameStatus, gameId, onJoin, onAssignAI, onReleaseAI, onR
 }
 
 // ── Battle preview / spectate CTA ────────────────────────────
-function BattlePreviewCard({ data }) {
-  if (data.status !== "active") {
+function BattlePreviewCard({ data, navigate, battleStageGameId }) {
+  const status = data?.status;
+  if (status !== "active") {
     return (
       <div className="preview-card">
         <div className="preview-title">战场态势</div>
@@ -335,13 +336,37 @@ function BattlePreviewCard({ data }) {
       </div>
     );
   }
+
+  // Build faction power summary from real factions{} data
+  const factions = data?.factions || {};
+  const factionLines = FACTIONS.map(f => {
+    const ff = factions[f];
+    if (!ff) return null;
+    return `${f} ${ff.cities ?? 0}城·${ff.troops ?? 0}兵`;
+  }).filter(Boolean).join('  /  ');
+
+  // Build cities summary: first 5 cities
+  const cities = data?.cities || [];
+  const cityText = cities.slice(0, 5).map(c =>
+    `${c.name}:${c.owner || '中立'} ${c.troops}兵`
+  ).join(' · ');
+  const moreText = cities.length > 5 ? ` …共${cities.length}城` : '';
+
   return (
     <div className="preview-card">
-      <div className="preview-title">战场态势</div>
+      <div className="preview-title">战场态势 · 实时</div>
       <div className="preview-meta">
-        Game #{data.game_id} · Tick {data.tick}/{data.max_ticks} · 成都:蜀 1240兵 · 洛阳:魏 980兵 · 建业:吴 1100兵 · 宛城:中立 ~600
+        Game #{data.game_id} · Tick {data.tick}/{data.max_ticks}
       </div>
-      <button className="btn-primary">进入观战页 →</button>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--ink-dim)', marginBottom: 10, lineHeight: 1.7 }}>
+        {factionLines}
+      </div>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--ink-mute)', marginBottom: 14, lineHeight: 1.5 }}>
+        {cityText}{moreText}
+      </div>
+      <button className="btn-primary" onClick={() => navigate(`/spectate?game=${data.game_id}`)}>
+        进入观战页查看详情 →
+      </button>
     </div>
   );
 }
@@ -396,7 +421,7 @@ function Footer({ today }) {
 }
 
 // ── HomePage root ─────────────────────────────────────────────
-function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDeadline, heroMode, isLoading, onJoin, onAssignAI, onReleaseAI, onReady, onLeave, onViewInstruction }) {
+function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDeadline, heroMode, isLoading, onJoin, onAssignAI, onReleaseAI, onReady, onLeave, onViewInstruction, navigate }) {
   const today = "丙午年 · 仲夏 · 兰纳署";
 
   if (!data) {
@@ -460,7 +485,7 @@ function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDea
         <Slots slots={slots} gameStatus={gameStatus} gameId={gameId}
           onJoin={onJoin} onAssignAI={onAssignAI} onReleaseAI={onReleaseAI}
           onReady={onReady} onLeave={onLeave} onViewInstruction={onViewInstruction} />
-        <BattlePreviewCard data={data || {}} />
+        <BattlePreviewCard data={data || {}} navigate={navigate} />
         <div className="spectate-row">
           <button className="btn-ghost" onClick={() => navigate(`/spectate?game=${data?.game_id}`)}>仅观战(不占槽位)</button>
         </div>
@@ -617,6 +642,7 @@ function InkHomePage() {
         onReady={actReady}
         onLeave={doLeave}
         onViewInstruction={(f, saved) => { setModalFaction(f); setModalPhase('done'); setSavedResult(saved); }}
+        navigate={navigate}
       />
 
       {/* Countdown overlay */}
