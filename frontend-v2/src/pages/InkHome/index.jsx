@@ -13,6 +13,7 @@ import usePolling from '../../hooks/usePolling';
 import { FACTION_COLORS, isGameInProgress } from '../../constants';
 import { api } from '../../api';
 import JoinModal, { getSession } from '../../components/JoinModal';
+import InkNav from '../../components/InkNav';
 
 const TWEAK_DEFAULTS = {
   hero_mode: "auto",
@@ -144,37 +145,8 @@ function BrushDivider({ label, seal }) {
   );
 }
 
-// ── Nav ───────────────────────────────────────────────────────
-function Nav() {
-  const tabs = [
-    ["/", "首页"],
-    ["/access", "接入"],
-    ["/api-docs", "接入文档"],
-    ["/rules", "规则"],
-    ["/battles", "战报"],
-    ["/rankings", "排行榜"],
-  ];
-  return (
-    <nav className="nav">
-      <a className="nav-brand" href="#">
-        <span className="nav-seal">三</span>
-        <span className="nav-brand-text">
-          <span className="nav-zh">三国 ARENA</span>
-          <span className="nav-en">THREE KINGDOMS ARENA</span>
-        </span>
-      </a>
-      <div className="nav-tabs">
-        {tabs.map(([href, label], i) => (
-          <a key={href} href={href} className={"nav-tab" + (i === 0 ? " active" : "")}>{label}</a>
-        ))}
-      </div>
-      <div className="nav-right">
-        <span className="lang-tog"><span className="on">中</span><span>/</span><span>EN</span></span>
-        <a className="gh-link" href="https://github.com/DD-Deng/three-kingdoms-arena">GitHub ↗</a>
-      </div>
-    </nav>
-  );
-}
+// ── Nav (shared InkNav component) ────────────────────────────
+// Imported from ../../components/InkNav; used as <InkNav /> below
 
 // ── Hero ──────────────────────────────────────────────────────
 function Hero() {
@@ -427,7 +399,7 @@ function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDea
   if (!data) {
     return (
       <div className="ink-home">
-        <Nav />
+        <InkNav />
         <div className="page" style={{ textAlign: 'center', paddingTop: 120 }}>
           <Hero />
           <p style={{ color: 'var(--ink-mute)', marginTop: 24 }}>正在连接服务器…</p>
@@ -438,7 +410,7 @@ function HomePagePreview({ data, slots, gameId, gameStatus, winner, countdownDea
 
   return (
     <div className="ink-home">
-      <Nav />
+      <InkNav />
       <div className="page">
         <span className="v-mark" style={{ "--top": "60px" }}>群 雄 之 章</span>
 
