@@ -1,5 +1,19 @@
 # Day 16+ Backlog
 
+## Session-Agent Sync: Long-term Cascade Design
+
+**Context**: Day 16 found Session and Agent tables can desync — Agent deactivated
+while Session remains "active", causing `/v1/lobby/instruction` to return 200 for
+invalid tokens.
+
+**Partial fix (e8a7986 + a998f0a)**: `validate_session` now checks `Agent.is_active`,
+and `_release_managed_agent` now kicks orphaned Sessions. But more deactivation paths
+may still exist.
+
+**Long-term**: DB-level cascade — when `Agent.is_active = False`, automatically
+update `Session.status = 'kicked'` in the same transaction. OR refactor to a single
+table (merge Agent + Session).
+
 ## P0-2 Complete: All-AI Tick Advancement
 
 **Context**: P0-2 (paused auto-recovery) was partially fixed on Day 15. State machine no
