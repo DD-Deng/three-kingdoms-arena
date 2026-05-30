@@ -14,7 +14,7 @@ const TWEAK_DEFAULTS = {
   saved_session: "none",
   bg_opacity: 0.8,
   bg_motion: true,
-  bg_layout: "scroll",
+  bg_layout: "fill",
 };
 
 // ═══════════════════════════════════════════════════════════════
