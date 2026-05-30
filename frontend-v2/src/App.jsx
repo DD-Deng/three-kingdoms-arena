@@ -29,12 +29,15 @@ export default function App() {
   useEffect(() => { fetchCsrfToken() }, [])
   return (
     <Routes>
-      {/* 水墨首页预览 — 独立布局 */}
-      <Route path="/ink" element={<InkHomePage />} />
+      {/* ── 水墨首页 — 全站入口 ── */}
+      <Route path="/" element={<InkHomePage />} />
+
+      {/* ── /ink → 重定向到 / (老链接兼容) ── */}
+      <Route path="/ink" element={<Navigate to="/" replace />} />
 
       <Route element={<MainLayout />}>
-        {/* ── 首页（含完整 Lobby 功能） ── */}
-        <Route path="/" element={<HomePage />} />
+        {/* ── 旧首页回滚后路 (稳定后清理) ── */}
+        <Route path="/old" element={<HomePage />} />
 
         {/* ── /lobby → 301 跳首页 ── */}
         <Route path="/lobby" element={<Navigate to="/" replace />} />
