@@ -127,9 +127,26 @@ export default function CommentaryPage() {
         <span className="co-gameid">Game #{id}</span>
       </div>
 
-      {/* ── ready: render markdown ──────────────────────── */}
+      {/* ── ready: 评书 header + markdown ──────────────── */}
       {state === 'ready' && content && (
-        <div className="co-body"><ReactMarkdown>{content}</ReactMarkdown></div>
+        <>
+          <div className="co-header">
+            <div className="brush-divider">
+              <svg viewBox="0 0 400 14" preserveAspectRatio="none">
+                <path d="M 0 7 Q 50 4, 100 7 T 200 7 T 300 7 T 400 7" fill="none" stroke="#1f1a16" strokeWidth="0.6" opacity="0.4" />
+                <path d="M 8 7 Q 80 9, 160 7 T 320 6 T 392 7" fill="none" stroke="#1f1a16" strokeWidth="1.6" opacity="0.7" strokeLinecap="round" />
+              </svg>
+              <div className="brush-divider-label">
+                评 书<span className="seal">演</span>
+              </div>
+              <svg viewBox="0 0 400 14" preserveAspectRatio="none">
+                <path d="M 0 7 Q 80 5, 160 7 T 320 7 T 400 7" fill="none" stroke="#1f1a16" strokeWidth="1.6" opacity="0.7" strokeLinecap="round" />
+                <path d="M 8 7 Q 50 9, 100 7 T 200 7 T 300 7 T 392 7" fill="none" stroke="#1f1a16" strokeWidth="0.6" opacity="0.4" />
+              </svg>
+            </div>
+          </div>
+          <div className="co-body"><ReactMarkdown>{content}</ReactMarkdown></div>
+        </>
       )}
       {state === 'ready' && !content && (
         <div className="co-empty">暂无评书内容</div>

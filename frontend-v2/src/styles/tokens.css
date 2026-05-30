@@ -851,30 +851,60 @@ a { color: inherit; }
   .bd-stats-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Commentary page ───────────────────────────── */
-.co-page { max-width: 720px; margin: 0 auto; padding: 24px 0 60px; }
-.co-top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+/* ── Commentary page — 评书 chapter treatment ─── */
+.co-page { max-width: 760px; margin: 0 auto; padding: 36px 0 60px; }
+.co-top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; }
 .co-gameid { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink-mute); }
 .co-empty { text-align: center; padding: 60px 0; color: var(--ink-mute); }
 
+/* Commentary header (brush divider + seal) */
+.co-header { margin-bottom: 32px; }
+
+/* Paper panel body */
 .co-body {
   font-family: var(--font-sans); font-size: 17px; line-height: 2.1;
-  color: var(--ink); max-width: 640px; margin: 0 auto;
+  color: var(--ink); max-width: 680px; margin: 0 auto;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 48px 52px 56px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset,
+              0 0 0 1px rgba(31,26,22,0.03),
+              0 16px 36px -16px rgba(31,26,22,0.12);
 }
-.co-body h1 { font-size: 24px; margin: 40px 0 20px; text-align: center; font-weight: 700; }
-.co-body h2 { font-size: 20px; margin: 32px 0 14px; font-weight: 600; }
+/* 回目 — vermillion chapter headings */
+.co-body h1 {
+  font-size: 22px; margin: 0 0 28px; text-align: center; font-weight: 700;
+  color: var(--vermillion); letter-spacing: 2px;
+}
+.co-body h1:first-child { margin-top: 0; }
+/* subsequent 回目 — space above */
+.co-body h1 ~ h1, .co-body h1:not(:first-child) { margin-top: 48px; }
+.co-body h2 { font-size: 19px; margin: 36px 0 14px; font-weight: 600; }
 .co-body p { margin-bottom: 16px; text-indent: 2em; }
-.co-body blockquote { border-left: 3px solid var(--accent); padding: 8px 16px; margin: 16px 0; color: var(--ink-dim); font-style: italic; }
-.co-body hr { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
+.co-body blockquote {
+  border-left: 3px solid var(--vermillion); padding: 8px 16px;
+  margin: 16px 0; color: var(--ink-dim); font-style: italic;
+}
+.co-body hr {
+  border: none; height: 14px; margin: 36px 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 14' preserveAspectRatio='none'><path d='M 0 7 Q 50 4, 100 7 T 200 7 T 300 7 T 400 7' fill='none' stroke='%23b03a2e' stroke-width='0.6' opacity='0.4'/><path d='M 8 7 Q 80 9, 160 7 T 320 6 T 392 7' fill='none' stroke='%23b03a2e' stroke-width='1.6' opacity='0.7' stroke-linecap='round'/></svg>");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
 .co-body em { font-style: italic; color: var(--ink-dim); }
 
 /* generating state */
 .co-generating { text-align: center; padding: 80px 0; }
-.co-gen-title { font-size: 24px; color: var(--ink); margin-bottom: 12px; }
+.co-gen-title { font-size: 24px; color: var(--vermillion); margin-bottom: 12px; }
 .co-gen-hint { font-size: var(--fs-sm); color: var(--ink-mute); }
 
 /* not_started / failed / unfinished card */
-.co-card { max-width: 480px; margin: 60px auto; text-align: center; padding: 48px 32px; background: var(--panel); border: 1px solid var(--line); }
+.co-card {
+  max-width: 480px; margin: 60px auto; text-align: center;
+  padding: 48px 32px; background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset,
+              0 0 0 1px rgba(31,26,22,0.03),
+              0 16px 36px -16px rgba(31,26,22,0.12);
+}
 .co-card-title { font-size: 22px; color: var(--ink); margin-bottom: 14px; font-weight: 600; }
 .co-card-desc { font-size: var(--fs-body); color: var(--ink-dim); margin-bottom: 24px; line-height: 1.6; }
 .co-card-footnote { font-size: var(--fs-sm); color: var(--ink-mute); margin-top: 18px; }
