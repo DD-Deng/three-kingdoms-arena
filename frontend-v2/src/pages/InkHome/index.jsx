@@ -1,12 +1,15 @@
 // InkHome — ink-wash homepage preview
+import { useState, useEffect } from 'react';
 import './InkHome.css';
 import './InkLandscape.css';
 import './InkDragon.css';
-import { FACTIONS, F_INFO, LOBBY_PRESETS } from './data';
+import { FACTIONS, F_INFO } from './data';
 import { HeroBattle } from './HeroBattle';
 import { InkLandscape } from './InkLandscape';
 import { InkDragon } from './InkDragon';
 import { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakToggle, TweakRadio, TweakSelect } from './TweaksPanel';
+import usePolling from '../../hooks/usePolling';
+import { FACTION_COLORS, isGameInProgress } from '../../constants';
 
 const TWEAK_DEFAULTS = {
   hero_mode: "auto",
@@ -23,44 +26,59 @@ const TWEAK_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════
 
 
-// ── Helper for slot UI ────────────────────────────────────────
+// ── Helper: format duration ────────────────────────────────────
+function fmtDuration(sec) {
+  if (sec == null || isNaN(sec)) return '?'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return m > 0 ? `${m}m${s}s` : `${s}s`
+}
+
+// ── Helper for slot UI — 7 states, matches old HomePage ────────
 function slotUI(slot, faction, gameStatus) {
-  const s = slot?.status || "open";
-  const ready = slot?.ready;
-  if (gameStatus === "countdown" || gameStatus === "active") {
+  const s = slot?.status || "open"
+  const ready = slot?.ready || false
+  // locked: countdown / active / finished — slot not interactable
+  if (gameStatus === "countdown" || isGameInProgress(gameStatus)) {
     return {
       label: gameStatus === "countdown" ? "倒计时中" : "对局中",
       cssClass: "locked",
       description: `${F_INFO[faction].monarch} · ${slot?.agent_display_name || "—"}`,
       actions: null,
-    };
+    }
   }
   if (gameStatus === "finished") {
-    return { label: "已结束", cssClass: "locked", description: "", actions: null };
+    return { label: "已结束", cssClass: "finished", description: "", actions: null }
   }
   switch (s) {
-    case "open": return {
-      label: "空缺", cssClass: "open",
-      description: `等待玩家或 AI 接入 · ${F_INFO[faction].monarch}`,
-      actions: [{ id: "ai", label: "配 AI 托管", kind: "ghost" },
-                { id: "join", label: `加入 ${faction}`, kind: "primary" }],
-    };
-    case "ai_managed": return {
-      label: "AI 托管", cssClass: "ai",
-      description: slot.agent_display_name || "Managed AI",
-      actions: [{ id: "grab", label: `抢占 ${faction}`, kind: "primary" },
-                { id: "release", label: "释放 AI", kind: "ghost" }],
-    };
-    case "occupied": return ready ? {
-      label: "已就绪", cssClass: "ready",
-      description: `${slot.agent_display_name} · IP ${slot.ip || "***"}`,
-      actions: null,
-    } : {
-      label: "未就绪", cssClass: "occupied",
-      description: `${slot.agent_display_name} · 等待 ready`,
-      actions: null,
-    };
-    default: return { label: s, cssClass: "open", description: "", actions: null };
+    case "open":
+      return {
+        label: "空缺", cssClass: "open",
+        description: `${faction} · ${F_INFO[faction].monarch}`,
+        actions: [
+          { id: "ai", label: "配 AI 托管", kind: "ghost" },
+          { id: "join", label: `加入 ${faction}`, kind: "primary" },
+        ],
+      }
+    case "ai_managed":
+      return {
+        label: "AI 托管", cssClass: "ai",
+        description: slot?.agent_display_name || "Managed AI",
+        actions: [
+          { id: "grab", label: `抢占 ${faction}`, kind: "primary" },
+          { id: "release", label: "释放 AI", kind: "ghost" },
+        ],
+      }
+    case "occupied":
+      return ready
+        ? { label: "已就绪", cssClass: "ready", description: `${slot?.agent_display_name || ""} · IP ${slot?.ip || "***"}`, actions: null }
+        : { label: "未就绪", cssClass: "occupied", description: `${slot?.agent_display_name || ""} · IP ${slot?.ip || "***"}`, actions: [{ id: "ready", label: "等待 Ready", kind: "ghost" }] }
+    case "disconnected":
+      return { label: "掉线", cssClass: "disconnected", description: `已断开 ${fmtDuration(slot?.disconnected_sec)}`, actions: [{ id: "grab", label: `抢占 ${faction}`, kind: "primary" }] }
+    case "exiled":
+      return { label: "玩家已退出", cssClass: "exiled", description: `${faction} · 灭国后退出`, actions: null }
+    default:
+      return { label: s, cssClass: "open", description: "", actions: null }
   }
 }
 
@@ -204,6 +222,8 @@ function BattleStage({ heroMode }) {
 
 // ── Status row ────────────────────────────────────────────────
 function StatusRow({ data }) {
+  const status = data?.status;
+  if (!status) return null;
   const badgeMap = {
     lobby:     { label: "等待中", cls: "b-lobby" },
     countdown: { label: "倒计时", cls: "b-countdown" },
@@ -211,7 +231,7 @@ function StatusRow({ data }) {
     paused:    { label: "已暂停", cls: "b-paused" },
     finished:  { label: "已结束", cls: "b-finished" },
   };
-  const b = badgeMap[data.status] || { label: data.status, cls: "b-finished" };
+  const b = badgeMap[status] || { label: status, cls: "b-finished" };
   return (
     <div className="status-row">
       <span className="key">Game</span>
@@ -221,10 +241,10 @@ function StatusRow({ data }) {
       <span className="val">{data.tick}/{data.max_ticks}</span>
       <span className="status-sep">·</span>
       <span className={"status-badge " + b.cls}>{b.label}</span>
-      {data.spectators > 0 && (
+      {(data.spectator_count > 0) && (
         <>
           <span className="status-sep">·</span>
-          <span className="key">{data.spectators} 观战</span>
+          <span className="key">{data.spectator_count} 观战</span>
         </>
       )}
     </div>
@@ -233,10 +253,11 @@ function StatusRow({ data }) {
 
 // ── Slots ─────────────────────────────────────────────────────
 function Slots({ data, savedSession }) {
+  const slots = data?.slots || {};
   return (
     <div className="slots">
       {FACTIONS.map((f) => {
-        const slot = data.slots[f];
+        const slot = slots[f];
         const ui = slotUI(slot, f, data.status);
         const info = F_INFO[f];
         const hasSession = savedSession === f;
@@ -351,9 +372,23 @@ function Footer({ today }) {
 }
 
 // ── HomePage root ─────────────────────────────────────────────
-function HomePagePreview({ lobbyState, savedSession, heroMode }) {
-  const data = LOBBY_PRESETS[lobbyState] || LOBBY_PRESETS.mixed;
+function HomePagePreview({ data, savedSession, heroMode, isLoading }) {
   const today = "丙午年 · 仲夏 · 兰纳署";
+  const gameStatus = data?.status;
+  const winner = data?.winner;
+  const slots = data?.slots;
+
+  if (!data) {
+    return (
+      <div className="ink-home">
+        <Nav />
+        <div className="page" style={{ textAlign: 'center', paddingTop: 120 }}>
+          <Hero />
+          <p style={{ color: 'var(--ink-mute)', marginTop: 24 }}>正在连接服务器…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ink-home">
@@ -365,11 +400,46 @@ function HomePagePreview({ lobbyState, savedSession, heroMode }) {
 
         <BattleStage heroMode={heroMode} />
 
-        <StatusRow data={data} />
-        <Slots data={data} savedSession={savedSession} />
-        <BattlePreviewCard data={data} />
+        <StatusRow data={data || {}} />
+
+        {/* Ready progress (lobby / countdown only) */}
+        {(gameStatus === "lobby" || gameStatus === "countdown") && (
+          (() => {
+            const slotList = FACTIONS.map(f => slots?.[f]).filter(Boolean);
+            const activeSlots = slotList.filter(s => s.status === "occupied" || s.status === "ai_managed");
+            const readyCount = activeSlots.filter(s => s.ready).length;
+            return (
+              <div style={{
+                textAlign: 'center', padding: '10px 16px', marginBottom: 12,
+                background: readyCount === 3 ? 'rgba(45,107,61,0.12)' : 'var(--panel)',
+                borderRadius: 4, fontSize: 'var(--fs-sm)',
+                color: readyCount === 3 ? 'var(--wu)' : 'var(--ink-dim)',
+                border: '1px solid var(--line-2)',
+              }}>
+                {readyCount === 3
+                  ? '✅ 全阵营已就绪，即将开始对局！'
+                  : `已就绪: ${readyCount}/3 — 等所有阵营就绪后开始对局`
+                }
+              </div>
+            );
+          })()
+        )}
+
+        {/* Winner banner (finished) */}
+        {gameStatus === "finished" && winner && (
+          <div style={{
+            textAlign: 'center', padding: '12px 16px', marginBottom: 12,
+            background: 'var(--panel)', border: '1px solid var(--line-2)',
+            borderRadius: 4,
+          }}>
+            胜方: <span style={{ color: FACTION_COLORS[winner], fontWeight: 700 }}>{winner}</span>
+          </div>
+        )}
+
+        <Slots data={data || {}} savedSession={savedSession} />
+        <BattlePreviewCard data={data || {}} />
         <div className="spectate-row">
-          <button className="btn-ghost">仅观战(不占槽位)</button>
+          <a href={`/spectate?game=${data?.game_id}`} className="btn-ghost" style={{ textDecoration: 'none' }}>仅观战(不占槽位)</a>
         </div>
 
         <Footer today={today} />
@@ -382,14 +452,28 @@ function HomePagePreview({ lobbyState, savedSession, heroMode }) {
 function InkHomePage() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
+  // Adaptive polling: lobby 5s / countdown 1s / active 3s / finished stop
+  const [pollInterval, setPollInterval] = useState(5000);
+  const { data, isLoading } = usePolling('/v1/lobby/status', { intervalMs: pollInterval });
+
+  useEffect(() => {
+    if (!data?.status) return;
+    const next = data.status === 'finished' ? null
+      : data.status === 'countdown' ? 1000
+      : data.status === 'lobby' ? 5000
+      : 3000;
+    setPollInterval(prev => prev === next ? prev : next);
+  }, [data?.status]);
+
   return (
     <>
       <InkLandscape opacity={t.bg_opacity} motion={t.bg_motion} layout={t.bg_layout} />
       <InkDragon enabled={t.bg_motion} />
       <HomePagePreview
-        lobbyState={t.lobby_state}
+        data={data}
         savedSession={t.saved_session === "none" ? null : t.saved_session}
         heroMode={t.hero_mode}
+        isLoading={isLoading}
       />
       <TweaksPanel title="Tweaks">
         <TweakSection title="水墨背景">
